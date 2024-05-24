@@ -1,0 +1,3 @@
+# atranscoder-rpc
+
+Audio transcoder with simple HTTP API. Work in progress, nothing is implemented yet...

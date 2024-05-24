@@ -1,0 +1,15 @@
+[*.rs]
+indent_size = 4
+indent_style = space
+end_of_file_newline = lf
+trim_trailing_whitespace = true
+insert_spaces = true
+match_opening_closing_characters = true
+
+[*.toml]
+indent_size = 2
+indent_style = space
+end_of_file_newline = lf
+trim_trailing_whitespace = true
+insert_spaces = false
+match_opening_closing_characters = false

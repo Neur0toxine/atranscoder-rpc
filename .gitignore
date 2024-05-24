@@ -1,0 +1,28 @@
+# Editor generated files
+*.rs~
+*.toml~
+Cargo.lock
+target/
+
+# Compiler output files
+out/
+
+# Build artifacts
+*.exe
+*.so
+*.dylib
+
+# IDE project files
+.idea/
+.cproject/
+.project/
+
+# Visual Studio Code
+.vscode/
+
+# Other editor settings
+.idea/private/
+.idea/workspace.xml
+
+# macOS specific files
+.DS_Store
