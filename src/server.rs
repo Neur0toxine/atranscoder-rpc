@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use axum::{debug_handler, Json, Router};
+use axum::{Json, Router};
 use axum::extract::{DefaultBodyLimit, State};
 use axum::http::StatusCode;
 use axum::routing::post;
@@ -81,6 +81,7 @@ async fn enqueue_file(
                 req.codec,
                 req.bit_rate,
                 req.max_bit_rate,
+                req.sample_rate,
                 req.channel_layout,
                 req.upload_url,
                 input_path.unwrap().to_string(),

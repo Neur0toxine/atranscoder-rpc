@@ -19,6 +19,7 @@ pub struct ConvertRequest {
     pub codec: String,
     pub bit_rate: usize,
     pub max_bit_rate: usize,
+    pub sample_rate: i32,
     pub channel_layout: String,
     pub upload_url: String,
 

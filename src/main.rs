@@ -9,6 +9,7 @@ mod dto;
 mod server;
 mod task;
 mod thread_pool;
+mod transcoder;
 
 #[tokio::main]
 async fn main() {
