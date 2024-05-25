@@ -76,6 +76,7 @@ async fn enqueue_file(
 
             let task = Task::new(
                 task_id,
+                req.format,
                 req.codec,
                 req.codec_opts,
                 req.bit_rate,

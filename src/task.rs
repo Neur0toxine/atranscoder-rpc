@@ -8,6 +8,7 @@ use tracing::{debug, error};
 pub struct Task {
     id: uuid::Uuid,
     codec: String,
+    format: String,
     codec_opts: Option<String>,
     bit_rate: usize,
     max_bit_rate: usize,
@@ -21,6 +22,7 @@ pub struct Task {
 impl Task {
     pub fn new(
         id: uuid::Uuid,
+        format: String,
         codec: String,
         codec_opts: Option<String>,
         bit_rate: usize,
@@ -33,6 +35,7 @@ impl Task {
     ) -> Self {
         Task {
             id,
+            format,
             codec,
             codec_opts,
             bit_rate,
@@ -62,11 +65,11 @@ impl Task {
         if self.codec_opts.is_some() {
             octx = format::output_as_with(
                 &self.output_path,
-                &self.codec,
+                &self.format,
                 params_to_avdictionary(&self.codec_opts.unwrap_or_default()),
             );
         } else {
-            octx = format::output_as(&self.output_path, &self.codec);
+            octx = format::output_as(&self.output_path, &self.format);
         }
 
         let mut octx = match octx {
