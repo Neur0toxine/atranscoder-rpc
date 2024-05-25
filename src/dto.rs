@@ -8,18 +8,19 @@ pub struct Error {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct TaskResponse {
+pub struct ConvertResponse {
     pub id: Option<String>,
     pub error: Option<String>,
 }
 
 #[derive(TryFromMultipart)]
 #[try_from_multipart(rename_all = "camelCase")]
-pub struct Task {
+pub struct ConvertRequest {
     pub codec: String,
     pub bit_rate: usize,
     pub max_bit_rate: usize,
     pub channel_layout: String,
+    pub upload_url: String,
 
     #[form_data(limit = "25MiB")]
     pub file: FieldData<NamedTempFile>,

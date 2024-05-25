@@ -1,9 +1,14 @@
-use crate::server::serve;
 use std::env;
+
 use tracing_subscriber::EnvFilter;
+
+use crate::server::Server;
+use crate::thread_pool::ThreadPool;
 
 mod dto;
 mod server;
+mod task;
+mod thread_pool;
 
 #[tokio::main]
 async fn main() {
@@ -12,6 +17,27 @@ async fn main() {
         .init();
 
     let addr = env::var("LISTEN").unwrap_or_else(|_| "0.0.0.0:8090".to_string());
-
-    serve(&addr).await.expect("Cannot bind the addr")
+    let pool = ThreadPool::new(match env::var("NUM_WORKERS") {
+        Ok(val) => match val.parse::<usize>() {
+            Ok(val) => {
+                if val > 0 {
+                    Some(val);
+                }
+                None
+            }
+            Err(_) => None,
+        },
+        Err(_) => None,
+    });
+    let temp_dir = env::var("TEMP_DIR").unwrap_or_else(|_| {
+        env::temp_dir()
+            .to_str()
+            .expect("Cannot get system temp directory")
+            .parse()
+            .unwrap()
+    });
+    Server::new(pool, temp_dir)
+        .serve(&addr)
+        .await
+        .expect("Cannot bind the addr")
 }
