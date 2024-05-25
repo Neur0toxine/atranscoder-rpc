@@ -1,10 +1,10 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use axum::{Json, Router};
 use axum::extract::{DefaultBodyLimit, State};
 use axum::http::StatusCode;
 use axum::routing::post;
+use axum::{Json, Router};
 use axum_typed_multipart::TypedMultipart;
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
@@ -34,8 +34,7 @@ impl Server {
         let app = Router::new()
             .route(
                 "/enqueue",
-                post(enqueue_file)
-                    .layer(DefaultBodyLimit::max(CONTENT_LENGTH_LIMIT)),
+                post(enqueue_file).layer(DefaultBodyLimit::max(CONTENT_LENGTH_LIMIT)),
             )
             .with_state(this)
             .layer(TraceLayer::new_for_http());
@@ -54,8 +53,7 @@ async fn enqueue_file(
     TypedMultipart(req): TypedMultipart<ConvertRequest>,
 ) -> (StatusCode, Json<ConvertResponse>) {
     let task_id = Uuid::new_v4();
-    let input =
-        Path::new(&server.work_dir).join(format!("{}.in.atranscoder", task_id.to_string()));
+    let input = Path::new(&server.work_dir).join(format!("{}.in.atranscoder", task_id.to_string()));
     let output =
         Path::new(&server.work_dir).join(format!("{}.out.atranscoder", task_id.to_string()));
 
@@ -79,6 +77,7 @@ async fn enqueue_file(
             let task = Task::new(
                 task_id,
                 req.codec,
+                req.codec_opts,
                 req.bit_rate,
                 req.max_bit_rate,
                 req.sample_rate,

@@ -1,11 +1,14 @@
-use tracing::{debug, error};
-use ffmpeg_next::{Error, format};
-use ffmpeg_next::channel_layout::ChannelLayout;
 use crate::transcoder::{Transcoder, TranscoderParams};
+use ffmpeg_next::channel_layout::ChannelLayout;
+use ffmpeg_next::format::context;
+use ffmpeg_next::format::context::Input;
+use ffmpeg_next::{format, Dictionary, Error};
+use tracing::{debug, error};
 
 pub struct Task {
     id: uuid::Uuid,
     codec: String,
+    codec_opts: Option<String>,
     bit_rate: usize,
     max_bit_rate: usize,
     sample_rate: i32,
@@ -19,6 +22,7 @@ impl Task {
     pub fn new(
         id: uuid::Uuid,
         codec: String,
+        codec_opts: Option<String>,
         bit_rate: usize,
         max_bit_rate: usize,
         sample_rate: i32,
@@ -30,6 +34,7 @@ impl Task {
         Task {
             id,
             codec,
+            codec_opts,
             bit_rate,
             max_bit_rate,
             sample_rate,
@@ -41,26 +46,58 @@ impl Task {
     }
 
     pub fn execute(self) {
-        debug!("performing transcoding for task with id: {}", self.id.to_string());
-        let mut ictx = format::input(&self.input_path).unwrap();
-        let mut octx = format::output_as(&self.output_path, &self.codec).unwrap();
-        let transcoder = Transcoder::new(&mut ictx, &mut octx, TranscoderParams {
-            codec: self.codec,
-            bit_rate: self.bit_rate,
-            max_bit_rate: self.max_bit_rate,
-            sample_rate: self.sample_rate,
-            channel_layout: match self.channel_layout.as_str() {
-                "stereo" => ChannelLayout::STEREO,
-                "mono" => ChannelLayout::MONO,
-                "stereo_downmix" => ChannelLayout::STEREO_DOWNMIX,
-                _ => ChannelLayout::STEREO,
+        debug!(
+            "performing transcoding for task with id: {}",
+            self.id.to_string()
+        );
+        let mut ictx = match format::input(&self.input_path) {
+            Ok(val) => val,
+            Err(err) => {
+                error!("couldn't initialize input context: {:?}", err);
+                return;
             }
-        });
+        };
+
+        let octx: Result<context::Output, ffmpeg_next::Error>;
+        if self.codec_opts.is_some() {
+            octx = format::output_as_with(
+                &self.output_path,
+                &self.codec,
+                params_to_avdictionary(&self.codec_opts.unwrap_or_default()),
+            );
+        } else {
+            octx = format::output_as(&self.output_path, &self.codec);
+        }
+
+        let mut octx = match octx {
+            Ok(val) => val,
+            Err(err) => {
+                error!("couldn't initialize output context: {:?}", err);
+                return;
+            }
+        };
+
+        let transcoder = Transcoder::new(
+            &mut ictx,
+            &mut octx,
+            TranscoderParams {
+                codec: self.codec,
+                bit_rate: self.bit_rate,
+                max_bit_rate: self.max_bit_rate,
+                sample_rate: self.sample_rate,
+                channel_layout: match self.channel_layout.as_str() {
+                    "stereo" => ChannelLayout::STEREO,
+                    "mono" => ChannelLayout::MONO,
+                    "stereo_downmix" => ChannelLayout::STEREO_DOWNMIX,
+                    _ => ChannelLayout::STEREO,
+                },
+            },
+        );
         let mut transcoder = match transcoder {
             Ok(val) => val,
             Err(err) => {
                 error!("couldn't initialize FFmpeg transcoder: {:?}", err);
-                return
+                return;
             }
         };
         octx.set_metadata(ictx.metadata().to_owned());
@@ -87,4 +124,16 @@ impl Task {
         octx.write_trailer()
             .unwrap_or_else(|err| error!("couldn't finish transcoding: {:?}", err));
     }
+}
+
+fn params_to_avdictionary(input: &str) -> Dictionary {
+    let mut dict: Dictionary = Dictionary::new();
+    for pair in input.split(";") {
+        let mut parts = pair.split(":");
+
+        if let (Some(key), Some(value)) = (parts.next(), parts.next()) {
+            dict.set(key, value);
+        }
+    }
+    dict
 }

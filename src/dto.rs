@@ -17,6 +17,7 @@ pub struct ConvertResponse {
 #[try_from_multipart(rename_all = "camelCase")]
 pub struct ConvertRequest {
     pub codec: String,
+    pub codec_opts: Option<String>,
     pub bit_rate: usize,
     pub max_bit_rate: usize,
     pub sample_rate: i32,

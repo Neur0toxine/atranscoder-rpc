@@ -1,9 +1,9 @@
-use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use tracing::{error, debug};
+use tracing::{debug, error};
 
 use crate::task::Task;
 

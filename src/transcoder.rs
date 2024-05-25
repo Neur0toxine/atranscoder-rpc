@@ -4,6 +4,8 @@ use std::error::Error;
 use std::sync::Arc;
 
 use ffmpeg::{codec, filter, format, frame, media};
+use ffmpeg_next::codec::Audio;
+use ffmpeg_next::Codec;
 
 pub struct Transcoder {
     params: Arc<TranscoderParams>,
@@ -28,16 +30,27 @@ impl Transcoder {
         ictx: &mut format::context::Input,
         octx: &mut format::context::Output,
         params: TranscoderParams,
-    ) -> Result<Transcoder, ffmpeg::Error> {
+    ) -> Result<Transcoder, Box<dyn Error>> {
         let input = ictx
             .streams()
             .best(media::Type::Audio)
             .expect("could not find best audio stream");
         let context = codec::context::Context::from_parameters(input.parameters())?;
-        let mut decoder = context.decoder().audio()?;
-        let codec = ffmpeg::encoder::find_by_name(&*params.codec)
-            .expect(format!("failed to find encoder with name: {}", params.codec).as_str())
-            .audio()?;
+        let mut decoder = match context.decoder().audio() {
+            Ok(val) => val,
+            Err(err) => {
+                return Err(
+                    format!("couldn't find decoder for input file: {}", err.to_string()).into(),
+                )
+            }
+        };
+        let codec = match ffmpeg::encoder::find_by_name(&*params.codec) {
+            None => return Err(format!("couldn't find codec with name: {}", params.codec).into()),
+            Some(val) => match val.audio() {
+                Ok(val) => val,
+                Err(err) => return Err(err.into()),
+            },
+        };
         let global = octx
             .format()
             .flags()
@@ -68,7 +81,13 @@ impl Transcoder {
         encoder.set_format(
             codec
                 .formats()
-                .expect(format!("failed to get supported formats for codec: {}", codec.name()).as_str())
+                .expect(
+                    format!(
+                        "failed to get supported formats for codec: {}",
+                        codec.name()
+                    )
+                    .as_str(),
+                )
                 .next()
                 .unwrap(),
         );
@@ -115,13 +134,21 @@ impl Transcoder {
         self.encoder.send_eof().unwrap();
     }
 
-    pub(crate) fn receive_and_process_encoded_packets(&mut self, octx: &mut format::context::Output) {
+    pub(crate) fn receive_and_process_encoded_packets(
+        &mut self,
+        octx: &mut format::context::Output,
+    ) -> Result<(), Box<dyn Error>> {
         let mut encoded = ffmpeg::Packet::empty();
         while self.encoder.receive_packet(&mut encoded).is_ok() {
             encoded.set_stream(0);
             encoded.rescale_ts(self.in_time_base, self.out_time_base);
-            encoded.write_interleaved(octx).unwrap();
+
+            match encoded.write_interleaved(octx) {
+                Err(err) => return Err(err.into()),
+                Ok(_) => (),
+            }
         }
+        Ok(())
     }
 
     fn add_frame_to_filter(&mut self, frame: &ffmpeg::Frame) {
@@ -132,37 +159,65 @@ impl Transcoder {
         self.filter.get("in").unwrap().source().flush().unwrap();
     }
 
-    pub(crate) fn get_and_process_filtered_frames(&mut self, octx: &mut format::context::Output) {
+    pub(crate) fn get_and_process_filtered_frames(
+        &mut self,
+        octx: &mut format::context::Output,
+    ) -> Result<(), Box<dyn Error>> {
         let mut filtered = frame::Audio::empty();
-        while self
-            .filter
-            .get("out")
-            .unwrap()
-            .sink()
-            .frame(&mut filtered)
-            .is_ok()
-        {
-            self.send_frame_to_encoder(&filtered);
-            self.receive_and_process_encoded_packets(octx);
+        loop {
+            let mut ctx: ffmpeg::filter::Context = match self.filter.get("out") {
+                None => return Err(Box::from("cannot get context from filter")),
+                Some(val) => val,
+            };
+
+            if !ctx.sink().frame(&mut filtered).is_ok() {
+                return Err(Box::from("frame is suddenly invalid, stopping..."));
+            }
+
+            match self.send_frame_to_encoder(&filtered) {
+                Err(err) => return Err(err.into()),
+                Ok(_) => (),
+            };
+            match self.receive_and_process_encoded_packets(octx) {
+                Err(err) => return Err(err.into()),
+                Ok(_) => (),
+            }
         }
     }
 
-    pub(crate) fn send_packet_to_decoder(&mut self, packet: &ffmpeg::Packet) {
-        self.decoder.send_packet(packet).unwrap();
+    pub(crate) fn send_packet_to_decoder(
+        &mut self,
+        packet: &ffmpeg::Packet,
+    ) -> Result<(), Box<dyn Error>> {
+        match self.decoder.send_packet(packet) {
+            Err(err) => return Err(err.into()),
+            Ok(_) => Ok(()),
+        }
     }
 
-    pub(crate) fn send_eof_to_decoder(&mut self) {
-        self.decoder.send_eof().unwrap();
+    pub(crate) fn send_eof_to_decoder(&mut self) -> Result<(), Box<dyn Error>> {
+        match self.decoder.send_eof() {
+            Err(err) => return Err(err.into()),
+            Ok(_) => Ok(()),
+        }
     }
 
-    pub(crate) fn receive_and_process_decoded_frames(&mut self, octx: &mut format::context::Output) {
+    pub(crate) fn receive_and_process_decoded_frames(
+        &mut self,
+        octx: &mut format::context::Output,
+    ) -> Result<(), Box<dyn Error>> {
         let mut decoded = frame::Audio::empty();
         while self.decoder.receive_frame(&mut decoded).is_ok() {
             let timestamp = decoded.timestamp();
             decoded.set_pts(timestamp);
             self.add_frame_to_filter(&decoded);
-            self.get_and_process_filtered_frames(octx);
+
+            match self.get_and_process_filtered_frames(octx) {
+                Err(err) => return Err(err.into()),
+                Ok(_) => (),
+            }
         }
+        Ok(())
     }
 }
 
