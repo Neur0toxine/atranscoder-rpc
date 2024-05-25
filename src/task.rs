@@ -1,8 +1,6 @@
 use crate::transcoder::{Transcoder, TranscoderParams};
 use ffmpeg_next::channel_layout::ChannelLayout;
-use ffmpeg_next::format::context;
-use ffmpeg_next::format::context::Input;
-use ffmpeg_next::{format, Dictionary, Error};
+use ffmpeg_next::{format, Dictionary};
 use tracing::{debug, error};
 
 pub struct Task {
@@ -61,16 +59,15 @@ impl Task {
             }
         };
 
-        let octx: Result<context::Output, ffmpeg_next::Error>;
-        if self.codec_opts.is_some() {
-            octx = format::output_as_with(
+        let octx = if let Some(codec_opts) = self.codec_opts {
+            format::output_as_with(
                 &self.output_path,
                 &self.format,
-                params_to_avdictionary(&self.codec_opts.unwrap_or_default()),
-            );
+                params_to_avdictionary(&codec_opts),
+            )
         } else {
-            octx = format::output_as(&self.output_path, &self.format);
-        }
+            format::output_as(&self.output_path, &self.format)
+        };
 
         let mut octx = match octx {
             Ok(val) => val,
@@ -96,6 +93,7 @@ impl Task {
                 },
             },
         );
+
         let mut transcoder = match transcoder {
             Ok(val) => val,
             Err(err) => {
@@ -103,29 +101,57 @@ impl Task {
                 return;
             }
         };
+
         octx.set_metadata(ictx.metadata().to_owned());
-        octx.write_header()
-            .unwrap_or_else(|err| error!("couldn't start transcoding: {:?}", err));
+
+        if let Err(err) = octx.write_header() {
+            error!("couldn't start transcoding: {:?}", err);
+            return;
+        }
 
         for (stream, mut packet) in ictx.packets() {
             if stream.index() == transcoder.stream {
                 packet.rescale_ts(stream.time_base(), transcoder.in_time_base);
-                transcoder.send_packet_to_decoder(&packet);
-                transcoder.receive_and_process_decoded_frames(&mut octx);
+
+                if let Err(err) = transcoder.send_packet_to_decoder(&packet) {
+                    error!("error sending packet to decoder: {:?}", err);
+                    return;
+                }
+
+                transcoder.receive_and_process_decoded_frames(&mut octx)
+                    .unwrap_or_else(|err| error!("failure during processing decoded frames: {:?}", err));
             }
         }
 
-        transcoder.send_eof_to_decoder();
-        transcoder.receive_and_process_decoded_frames(&mut octx);
+        if let Err(err) = transcoder.send_eof_to_decoder() {
+            error!("error sending EOF to decoder: {:?}", err);
+            return;
+        }
 
-        transcoder.flush_filter();
-        transcoder.get_and_process_filtered_frames(&mut octx);
+        if let Err(err) = transcoder.receive_and_process_decoded_frames(&mut octx) {
+            error!("error receiving and processing decoded frames: {:?}", err);
+            return;
+        }
 
-        transcoder.send_eof_to_encoder();
-        transcoder.receive_and_process_encoded_packets(&mut octx);
+        if let Err(err) = transcoder.flush_filter() {
+            error!("couldn't flush filter: {:?}", err);
+            return;
+        }
 
-        octx.write_trailer()
-            .unwrap_or_else(|err| error!("couldn't finish transcoding: {:?}", err));
+        transcoder.get_and_process_filtered_frames(&mut octx)
+            .unwrap_or_else(|err| error!("failure during processing filtered frames: {:?}", err));
+
+        if let Err(err) = transcoder.send_eof_to_encoder() {
+            error!("couldn't send EOF to encoder: {:?}", err);
+            return;
+        }
+
+        transcoder.receive_and_process_encoded_packets(&mut octx)
+            .unwrap_or_else(|err| error!("failure during transcoding: {:?}", err));
+
+        if let Err(err) = octx.write_trailer() {
+            error!("couldn't finish transcoding: {:?}", err);
+        }
     }
 }
 

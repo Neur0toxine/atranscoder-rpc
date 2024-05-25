@@ -4,11 +4,9 @@ use std::error::Error;
 use std::sync::Arc;
 
 use ffmpeg::{codec, filter, format, frame, media};
-use ffmpeg_next::codec::Audio;
-use ffmpeg_next::Codec;
+use ffmpeg_next::error::EAGAIN;
 
 pub struct Transcoder {
-    params: Arc<TranscoderParams>,
     pub(crate) stream: usize,
     filter: filter::Graph,
     decoder: codec::decoder::Audio,
@@ -90,7 +88,6 @@ impl Transcoder {
 
         Ok(Transcoder {
             stream: input.index(),
-            params: Arc::new(params),
             filter,
             decoder,
             encoder,
@@ -103,8 +100,8 @@ impl Transcoder {
         self.encoder.send_frame(frame)
     }
 
-    pub(crate) fn send_eof_to_encoder(&mut self) {
-        self.encoder.send_eof().unwrap();
+    pub(crate) fn send_eof_to_encoder(&mut self) -> Result<(), ffmpeg::Error> {
+        self.encoder.send_eof()
     }
 
     pub(crate) fn receive_and_process_encoded_packets(
@@ -123,12 +120,12 @@ impl Transcoder {
         Ok(())
     }
 
-    fn add_frame_to_filter(&mut self, frame: &ffmpeg::Frame) {
-        self.filter.get("in").unwrap().source().add(frame).unwrap();
+    fn add_frame_to_filter(&mut self, frame: &ffmpeg::Frame) -> Result<(), ffmpeg::Error> {
+        self.filter.get("in").unwrap().source().add(frame)
     }
 
-    pub(crate) fn flush_filter(&mut self) {
-        self.filter.get("in").unwrap().source().flush().unwrap();
+    pub(crate) fn flush_filter(&mut self) -> Result<(), ffmpeg::Error> {
+        self.filter.get("in").unwrap().source().flush()
     }
 
     pub(crate) fn get_and_process_filtered_frames(
@@ -139,8 +136,11 @@ impl Transcoder {
         loop {
             let mut ctx = self.filter.get("out").ok_or("cannot get context from filter")?;
 
-            if ctx.sink().frame(&mut filtered).is_err() {
-                return Err("frame is suddenly invalid, stopping...".into());
+            if let Err(err) = ctx.sink().frame(&mut filtered) {
+                if err != ffmpeg::Error::Eof {
+                    return Err(err.into());
+                }
+                return Ok(());
             }
 
             self.send_frame_to_encoder(&filtered)?;
@@ -167,8 +167,14 @@ impl Transcoder {
         while self.decoder.receive_frame(&mut decoded).is_ok() {
             let timestamp = decoded.timestamp();
             decoded.set_pts(timestamp);
-            self.add_frame_to_filter(&decoded);
-            self.get_and_process_filtered_frames(octx)?;
+            self.add_frame_to_filter(&decoded)?;
+
+            if let Err(mut err) = self.get_and_process_filtered_frames(octx) {
+                let expected = ffmpeg::Error::Other { errno: EAGAIN };
+                if err.downcast_mut::<ffmpeg::error::Error>().ok_or(ffmpeg::Error::Bug) == Err(expected) {
+                    continue
+                }
+            }
         }
         Ok(())
     }
