@@ -40,10 +40,7 @@ impl Server {
             .layer(TraceLayer::new_for_http());
 
         tracing::info!("listening on {addr}");
-        let listener = match TcpListener::bind(addr).await {
-            Ok(listen) => listen,
-            Err(err) => return Err(err),
-        };
+        let listener = TcpListener::bind(addr).await?;
         axum::serve(listener, app).await
     }
 }
@@ -53,26 +50,21 @@ async fn enqueue_file(
     TypedMultipart(req): TypedMultipart<ConvertRequest>,
 ) -> (StatusCode, Json<ConvertResponse>) {
     let task_id = Uuid::new_v4();
-    let input = Path::new(&server.work_dir).join(format!("{}.in.atranscoder", task_id.to_string()));
-    let output =
-        Path::new(&server.work_dir).join(format!("{}.out.atranscoder", task_id.to_string()));
+    let input = Path::new(&server.work_dir).join(format!("{}.in.atranscoder", task_id));
+    let output = Path::new(&server.work_dir).join(format!("{}.out.atranscoder", task_id));
 
     let file = req.file;
 
     match file.contents.persist(input.clone()) {
         Ok(_) => {
-            let input_path = input.to_str();
-            let output_path = output.to_str();
-
-            if input_path.is_none() || output_path.is_none() {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json::from(ConvertResponse {
-                        id: None,
-                        error: Some(String::from("Input or output paths are not correct")),
-                    }),
-                );
-            }
+            let input_path = match input.to_str() {
+                Some(path) => path,
+                None => return error_response("Invalid input path"),
+            };
+            let output_path = match output.to_str() {
+                Some(path) => path,
+                None => return error_response("Invalid output path"),
+            };
 
             let task = Task::new(
                 task_id,
@@ -84,8 +76,8 @@ async fn enqueue_file(
                 req.sample_rate,
                 req.channel_layout,
                 req.upload_url,
-                input_path.unwrap().to_string(),
-                output_path.unwrap().to_string(),
+                input_path.to_string(),
+                output_path.to_string(),
             );
 
             // Enqueue the task to the thread pool
@@ -99,12 +91,16 @@ async fn enqueue_file(
                 }),
             )
         }
-        Err(_) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json::from(ConvertResponse {
-                id: Some(task_id.to_string()),
-                error: Some(String::from("Cannot save the file")),
-            }),
-        ),
+        Err(_) => error_response("Cannot save the file"),
     }
+}
+
+fn error_response(msg: &str) -> (StatusCode, Json<ConvertResponse>) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json::from(ConvertResponse {
+            id: None,
+            error: Some(msg.to_string()),
+        }),
+    )
 }

@@ -34,27 +34,18 @@ impl Transcoder {
         let input = ictx
             .streams()
             .best(media::Type::Audio)
-            .expect("could not find best audio stream");
+            .ok_or("could not find best audio stream")?;
+
         let context = codec::context::Context::from_parameters(input.parameters())?;
-        let mut decoder = match context.decoder().audio() {
-            Ok(val) => val,
-            Err(err) => {
-                return Err(
-                    format!("couldn't find decoder for input file: {}", err.to_string()).into(),
-                )
-            }
-        };
-        let codec = match ffmpeg::encoder::find_by_name(&*params.codec) {
-            None => return Err(format!("couldn't find codec with name: {}", params.codec).into()),
-            Some(val) => match val.audio() {
-                Ok(val) => val,
-                Err(err) => return Err(err.into()),
-            },
-        };
-        let global = octx
-            .format()
-            .flags()
-            .contains(format::flag::Flags::GLOBAL_HEADER);
+        let mut decoder = context.decoder().audio().map_err(|err| {
+            format!("couldn't find decoder for input file: {}", err)
+        })?;
+
+        let codec = ffmpeg::encoder::find_by_name(&*params.codec)
+            .ok_or_else(|| format!("couldn't find codec with name: {}", params.codec))?
+            .audio()?;
+
+        let global = octx.format().flags().contains(format::flag::Flags::GLOBAL_HEADER);
 
         decoder.set_parameters(input.parameters())?;
 
@@ -74,46 +65,28 @@ impl Transcoder {
 
         encoder.set_rate(sample_rate);
         encoder.set_channel_layout(params.channel_layout);
+
         #[cfg(not(feature = "ffmpeg_7_0"))]
-        {
-            encoder.set_channels(params.channel_layout.channels());
-        }
+        encoder.set_channels(params.channel_layout.channels());
+
         encoder.set_format(
             codec
                 .formats()
-                .expect(
-                    format!(
-                        "failed to get supported formats for codec: {}",
-                        codec.name()
-                    )
-                    .as_str(),
-                )
+                .ok_or_else(|| format!("failed to get supported formats for codec: {}", codec.name()))?
                 .next()
-                .unwrap(),
+                .ok_or("no supported formats found for codec")?,
         );
 
-        if params.bit_rate > 0 {
-            encoder.set_bit_rate(params.bit_rate);
-        } else {
-            encoder.set_bit_rate(decoder.bit_rate());
-        }
-
-        if params.max_bit_rate > 0 {
-            encoder.set_max_bit_rate(params.bit_rate);
-        } else {
-            encoder.set_max_bit_rate(decoder.max_bit_rate());
-        }
-
+        encoder.set_bit_rate(if params.bit_rate > 0 { params.bit_rate } else { decoder.bit_rate() });
+        encoder.set_max_bit_rate(if params.max_bit_rate > 0 { params.max_bit_rate } else { decoder.max_bit_rate() });
         encoder.set_time_base((1, sample_rate));
         output.set_time_base((1, sample_rate));
 
+        let in_time_base = decoder.time_base();
         let encoder = encoder.open_as(codec)?;
         output.set_parameters(&encoder);
 
-        let filter = filter("anull", &decoder, &encoder)?;
-
-        let in_time_base = decoder.time_base();
-        let out_time_base = output.time_base();
+        let filter = filter_graph("anull", &decoder, &encoder)?;
 
         Ok(Transcoder {
             stream: input.index(),
@@ -122,7 +95,7 @@ impl Transcoder {
             decoder,
             encoder,
             in_time_base,
-            out_time_base,
+            out_time_base: output.time_base(),
         })
     }
 
@@ -143,9 +116,8 @@ impl Transcoder {
             encoded.set_stream(0);
             encoded.rescale_ts(self.in_time_base, self.out_time_base);
 
-            match encoded.write_interleaved(octx) {
-                Err(err) => return Err(err.into()),
-                Ok(_) => (),
+            if let Err(err) = encoded.write_interleaved(octx) {
+                return Err(err.into());
             }
         }
         Ok(())
@@ -165,23 +137,14 @@ impl Transcoder {
     ) -> Result<(), Box<dyn Error>> {
         let mut filtered = frame::Audio::empty();
         loop {
-            let mut ctx: ffmpeg::filter::Context = match self.filter.get("out") {
-                None => return Err(Box::from("cannot get context from filter")),
-                Some(val) => val,
-            };
+            let mut ctx = self.filter.get("out").ok_or("cannot get context from filter")?;
 
-            if !ctx.sink().frame(&mut filtered).is_ok() {
-                return Err(Box::from("frame is suddenly invalid, stopping..."));
+            if ctx.sink().frame(&mut filtered).is_err() {
+                return Err("frame is suddenly invalid, stopping...".into());
             }
 
-            match self.send_frame_to_encoder(&filtered) {
-                Err(err) => return Err(err.into()),
-                Ok(_) => (),
-            };
-            match self.receive_and_process_encoded_packets(octx) {
-                Err(err) => return Err(err.into()),
-                Ok(_) => (),
-            }
+            self.send_frame_to_encoder(&filtered)?;
+            self.receive_and_process_encoded_packets(octx)?;
         }
     }
 
@@ -189,17 +152,11 @@ impl Transcoder {
         &mut self,
         packet: &ffmpeg::Packet,
     ) -> Result<(), Box<dyn Error>> {
-        match self.decoder.send_packet(packet) {
-            Err(err) => return Err(err.into()),
-            Ok(_) => Ok(()),
-        }
+        self.decoder.send_packet(packet).map_err(|err| err.into())
     }
 
     pub(crate) fn send_eof_to_decoder(&mut self) -> Result<(), Box<dyn Error>> {
-        match self.decoder.send_eof() {
-            Err(err) => return Err(err.into()),
-            Ok(_) => Ok(()),
-        }
+        self.decoder.send_eof().map_err(|err| err.into())
     }
 
     pub(crate) fn receive_and_process_decoded_frames(
@@ -211,17 +168,13 @@ impl Transcoder {
             let timestamp = decoded.timestamp();
             decoded.set_pts(timestamp);
             self.add_frame_to_filter(&decoded);
-
-            match self.get_and_process_filtered_frames(octx) {
-                Err(err) => return Err(err.into()),
-                Ok(_) => (),
-            }
+            self.get_and_process_filtered_frames(octx)?;
         }
         Ok(())
     }
 }
 
-fn filter(
+fn filter_graph(
     spec: &str,
     decoder: &codec::decoder::Audio,
     encoder: &codec::encoder::Audio,
@@ -239,13 +192,10 @@ fn filter(
     filter.add(&filter::find("abuffer").unwrap(), "in", &args)?;
     filter.add(&filter::find("abuffersink").unwrap(), "out", "")?;
 
-    {
-        let mut out = filter.get("out").unwrap();
-
-        out.set_sample_format(encoder.format());
-        out.set_channel_layout(encoder.channel_layout());
-        out.set_sample_rate(encoder.rate());
-    }
+    let mut out = filter.get("out").unwrap();
+    out.set_sample_format(encoder.format());
+    out.set_channel_layout(encoder.channel_layout());
+    out.set_sample_rate(encoder.rate());
 
     filter.output("in", 0)?.input("out", 0)?.parse(spec)?;
     filter.validate()?;
@@ -253,15 +203,8 @@ fn filter(
     println!("{}", filter.dump());
 
     if let Some(codec) = encoder.codec() {
-        if !codec
-            .capabilities()
-            .contains(codec::capabilities::Capabilities::VARIABLE_FRAME_SIZE)
-        {
-            filter
-                .get("out")
-                .unwrap()
-                .sink()
-                .set_frame_size(encoder.frame_size());
+        if !codec.capabilities().contains(codec::capabilities::Capabilities::VARIABLE_FRAME_SIZE) {
+            filter.get("out").unwrap().sink().set_frame_size(encoder.frame_size());
         }
     }
 
