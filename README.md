@@ -29,4 +29,5 @@ curl --location 'http://localhost:8090/enqueue' \
 - [ ] Remove transcoding result after uploading it to the `uploadUrl`.
 - [ ] (Optional) Make `uploadUrl` optional and allow the client to download the file on-demand.
 - [ ] Docker image for `amd64` and `aarch64`.
+- [ ] Statically linked binary for Docker image & result docker image based on `scratch` (reduce image size).
 - [ ] Tests!
