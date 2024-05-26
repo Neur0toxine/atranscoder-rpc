@@ -95,6 +95,7 @@ impl Task {
             &mut octx,
             TranscoderParams {
                 codec: self.params.codec,
+                codec_opts: self.params.codec_opts,
                 bit_rate: self.params.bit_rate,
                 max_bit_rate: self.params.max_bit_rate,
                 sample_rate: self.params.sample_rate,
@@ -248,10 +249,10 @@ fn upload_file<P: AsRef<Path>>(
     }
 }
 
-fn params_to_avdictionary(input: &str) -> Dictionary {
+pub fn params_to_avdictionary(input: &str) -> Dictionary {
     let mut dict: Dictionary = Dictionary::new();
     for pair in input.split(';') {
-        let mut parts = pair.split(':');
+        let mut parts = pair.split('=');
 
         if let (Some(key), Some(value)) = (parts.next(), parts.next()) {
             dict.set(key, value);

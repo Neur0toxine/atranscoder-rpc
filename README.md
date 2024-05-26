@@ -8,7 +8,7 @@ Audio transcoder with simple HTTP API. Work in progress.
 # How to Use
 
 Transcoding can be done like this:
-1. Use `cargo run` or [`neur0toxine/atranscoder-rpc`](https://hub.docker.com/r/neur0toxine/atranscoder-rpc/) Docker image.
+1. Use [`neur0toxine/atranscoder-rpc`](https://hub.docker.com/r/neur0toxine/atranscoder-rpc/) Docker image.
 2. Upload file for transcoding:
 ```bash
 curl --location 'http://localhost:8090/enqueue' \

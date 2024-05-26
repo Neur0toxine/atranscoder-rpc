@@ -43,7 +43,14 @@ impl Worker {
         let thread = thread::spawn(move || {
             ffmpeg_next::init()
                 .unwrap_or_else(|err| tracing::error!("couldn't init FFmpeg: {:?}", err));
-            ffmpeg_next::util::log::set_level(Level::Quiet);
+
+            ffmpeg_next::util::log::set_level(
+                if std::env::var("FFMPEG_VERBOSE").unwrap_or_default() == "1" {
+                    Level::Trace
+                } else {
+                    Level::Quiet
+                },
+            );
 
             loop {
                 let task = {

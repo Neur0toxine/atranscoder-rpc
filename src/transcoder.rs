@@ -1,9 +1,14 @@
 extern crate ffmpeg_next as ffmpeg;
 
+use std::any::Any;
 use std::error::Error;
 
+use crate::task::params_to_avdictionary;
 use ffmpeg::{codec, filter, format, frame, media};
+use ffmpeg_next::codec::Parameters;
 use ffmpeg_next::error::EAGAIN;
+use ffmpeg_next::Dictionary;
+use tracing::log::debug;
 
 pub struct Transcoder {
     pub(crate) stream: usize,
@@ -16,6 +21,7 @@ pub struct Transcoder {
 
 pub struct TranscoderParams {
     pub codec: String,
+    pub codec_opts: Option<String>,
     pub bit_rate: usize,
     pub max_bit_rate: usize,
     pub sample_rate: i32,
@@ -94,7 +100,11 @@ impl Transcoder {
         output.set_time_base((1, sample_rate));
 
         let in_time_base = decoder.time_base();
-        let encoder = encoder.open_as(codec)?;
+        let encoder = if let Some(codec_opts) = params.codec_opts {
+            encoder.open_as_with(codec, params_to_avdictionary(codec_opts.as_str()))?
+        } else {
+            encoder.open_as(codec)?
+        };
         output.set_parameters(&encoder);
 
         let filter = filter_graph("anull", &decoder, &encoder)?;
