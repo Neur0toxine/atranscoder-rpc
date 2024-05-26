@@ -21,13 +21,12 @@ curl --location 'http://localhost:8090/enqueue' \
 3. You will receive JSON response with job ID. The transcoding result will be saved into `/tmp/{job_id}.out.atranscoder`
 
 # Roadmap
-- [ ] Restart threads in case of panic.
+- [ ] ~~Restart threads in case of panic.~~ It's better to not panic. Current error handling seems ok for now.
 - [x] Implement somewhat acceptable error handling.
 - [x] Remove old conversion results and input files that are older than 1 hour.
 - [x] Remove input file after transcoding it.
 - [x] Implement file upload to `uploadUrl` (if `Content-Type: application/json` then conversion was not successful and body contains an error info).
 - [x] Remove transcoding result after uploading it to the `uploadUrl`.
-- [ ] (Optional) Make `uploadUrl` optional and allow the client to download the file on-demand.
-- [ ] Docker image for `amd64` and `aarch64`.
+- [x] Docker image for `amd64` and `aarch64`.
 - [ ] ~~Statically linked binary for Docker image & result docker image based on `scratch` (reduce image size).~~ Not yet, see [Dockerfile.scratch](Dockerfile.scratch).
 - [ ] Tests!
