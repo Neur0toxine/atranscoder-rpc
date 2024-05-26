@@ -24,9 +24,9 @@ curl --location 'http://localhost:8090/enqueue' \
 - [ ] Implement acceptable error handling.
 - [ ] Restart threads in case of panic.
 - [ ] Remove old conversion results and input files every Nth hours.
-- [ ] Remove input file after transcoding it.
-- [ ] Implement file upload to `uploadUrl` (if `Content-Type: application/json` then conversion was not successful and body contains an error info).
-- [ ] Remove transcoding result after uploading it to the `uploadUrl`.
+- [x] Remove input file after transcoding it.
+- [x] Implement file upload to `uploadUrl` (if `Content-Type: application/json` then conversion was not successful and body contains an error info).
+- [x] Remove transcoding result after uploading it to the `uploadUrl`.
 - [ ] (Optional) Make `uploadUrl` optional and allow the client to download the file on-demand.
 - [ ] Docker image for `amd64` and `aarch64`.
 - [ ] Statically linked binary for Docker image & result docker image based on `scratch` (reduce image size).

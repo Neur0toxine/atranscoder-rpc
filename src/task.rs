@@ -1,9 +1,16 @@
-use std::error::Error;
+use crate::dto::ConvertResponse;
 use crate::transcoder::{Transcoder, TranscoderParams};
 use ffmpeg_next::channel_layout::ChannelLayout;
 use ffmpeg_next::{format, Dictionary};
+use mime_guess::from_path;
+use std::error::Error;
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
 use tracing::{debug, error};
+use ureq::Response;
 
+#[derive(Clone)]
 pub struct Task {
     id: uuid::Uuid,
     params: TaskParams,
@@ -15,6 +22,40 @@ impl Task {
     }
 
     pub fn execute(self) -> Result<(), Box<dyn Error>> {
+        if let Err(err) = self.clone().transcode() {
+            std::fs::remove_file(Path::new(&self.params.input_path)).ok();
+            std::fs::remove_file(Path::new(&self.params.output_path)).ok();
+            send_error(
+                self.id,
+                format!("Couldn't transcode: {}", err).as_str(),
+                &self.params.upload_url,
+            )
+            .ok();
+            return Err(err);
+        }
+
+        std::fs::remove_file(Path::new(&self.params.input_path)).ok();
+
+        if let Err(err) = upload_file(&self.params.output_path, &self.params.upload_url) {
+            error!(
+                "couldn't upload result for job id={}, file path {}: {}",
+                &self.id.to_string(),
+                &self.params.output_path,
+                err
+            );
+        } else {
+            debug!(
+                "job id={} result was uploaded to {}",
+                &self.id.to_string(),
+                &self.params.upload_url
+            );
+        }
+
+        std::fs::remove_file(Path::new(&self.params.output_path)).ok();
+        Ok(())
+    }
+
+    pub fn transcode(self) -> Result<(), Box<dyn Error>> {
         debug!(
             "performing transcoding for task with id: {}",
             self.id.to_string()
@@ -27,7 +68,7 @@ impl Task {
             }
         };
 
-        let octx = if let Some(codec_opts) = self.params.codec_opts {
+        let octx = if let Some(codec_opts) = &self.params.codec_opts {
             format::output_as_with(
                 &self.params.output_path,
                 &self.params.format,
@@ -136,6 +177,7 @@ impl Task {
     }
 }
 
+#[derive(Clone)]
 pub struct TaskParams {
     pub format: String,
     pub codec: String,
@@ -147,6 +189,57 @@ pub struct TaskParams {
     pub input_path: String,
     pub output_path: String,
     pub upload_url: String,
+}
+
+fn send_error(
+    id: uuid::Uuid,
+    error: &str,
+    url: &str,
+) -> Result<Response, Box<dyn std::error::Error>> {
+    let response = ureq::post(url)
+        .set("Content-Type", "application/json")
+        .send_json(ConvertResponse {
+            id: Some(id.to_string()),
+            error: Some(error.to_string()),
+        })?;
+
+    if response.status() == 200 {
+        Ok(response)
+    } else {
+        Err(format!("Failed to send an error. Status: {}", response.status()).into())
+    }
+}
+
+fn upload_file<P: AsRef<Path>>(
+    file_path: P,
+    url: &str,
+) -> Result<Response, Box<dyn std::error::Error>> {
+    let path = file_path.as_ref();
+    let file_name = path
+        .file_name()
+        .ok_or("Invalid file path")?
+        .to_str()
+        .ok_or("Invalid file name")?;
+
+    let mut file = File::open(path)?;
+    let mut buffer = Vec::new();
+    file.read_to_end(&mut buffer)?;
+
+    let mime_type = from_path(path).first_or_octet_stream();
+
+    let response = ureq::post(url)
+        .set("Content-Type", mime_type.as_ref())
+        .set(
+            "Content-Disposition",
+            &format!("attachment; filename=\"{}\"", file_name),
+        )
+        .send_bytes(&buffer)?;
+
+    if response.status() == 200 {
+        Ok(response)
+    } else {
+        Err(format!("Failed to upload file. Status: {}", response.status()).into())
+    }
 }
 
 fn params_to_avdictionary(input: &str) -> Dictionary {

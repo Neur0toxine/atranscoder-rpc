@@ -22,7 +22,7 @@ async fn main() {
         env::var("NUM_WORKERS")
             .ok()
             .and_then(|val| val.parse::<usize>().ok())
-            .filter(|&val| val > 0)
+            .filter(|&val| val > 0),
     );
     let temp_dir = env::var("TEMP_DIR").unwrap_or_else(|_| {
         env::temp_dir()

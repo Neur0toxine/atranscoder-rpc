@@ -1,8 +1,8 @@
+use ffmpeg_next::log::Level;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use ffmpeg_next::log::Level;
 
 use tracing::{debug, error};
 

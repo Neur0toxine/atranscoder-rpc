@@ -141,21 +141,16 @@ impl Transcoder {
             let mut source = ctx.source();
             source.add(frame)
         } else {
-            Err(ffmpeg::Error::Other {
-                errno: 0,
-            })
+            Err(ffmpeg::Error::Other { errno: 0 })
         }
     }
-
 
     pub(crate) fn flush_filter(&mut self) -> Result<(), ffmpeg::Error> {
         if let Some(mut ctx) = self.filter.get("in") {
             let mut source = ctx.source();
             source.flush()
         } else {
-            Err(ffmpeg::Error::Other {
-                errno: 0,
-            })
+            Err(ffmpeg::Error::Other { errno: 0 })
         }
     }
 
