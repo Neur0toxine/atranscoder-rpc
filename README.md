@@ -35,7 +35,7 @@ You can change configuration using this environment variables:
 - [x] Remove input file after transcoding it.
 - [x] Implement file upload to `uploadUrl` (if `Content-Type: application/json` then conversion was not successful and body contains an error info).
 - [x] Remove transcoding result after uploading it to the `uploadUrl`.
-- [x] Docker image for `amd64` and `aarch64`.
+- [ ] Docker image for `amd64` and `arm64` (currently only `amd64` is supported).
 - [ ] ~~Restart threads in case of panic.~~ It's better to not panic. Current error handling seems ok for now.
 - [ ] ~~Statically linked binary for Docker image & result docker image based on `scratch` (reduce image size).~~ Not yet, see [Dockerfile.scratch](Dockerfile.scratch).
 - [ ] Tests!
