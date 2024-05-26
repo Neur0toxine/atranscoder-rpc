@@ -1,7 +1,6 @@
 extern crate ffmpeg_next as ffmpeg;
 
 use std::error::Error;
-use std::sync::Arc;
 
 use ffmpeg::{codec, filter, format, frame, media};
 use ffmpeg_next::error::EAGAIN;
@@ -35,15 +34,19 @@ impl Transcoder {
             .ok_or("could not find best audio stream")?;
 
         let context = codec::context::Context::from_parameters(input.parameters())?;
-        let mut decoder = context.decoder().audio().map_err(|err| {
-            format!("couldn't find decoder for input file: {}", err)
-        })?;
+        let mut decoder = context
+            .decoder()
+            .audio()
+            .map_err(|err| format!("couldn't find decoder for input file: {}", err))?;
 
-        let codec = ffmpeg::encoder::find_by_name(&*params.codec)
+        let codec = ffmpeg::encoder::find_by_name(&params.codec)
             .ok_or_else(|| format!("couldn't find codec with name: {}", params.codec))?
             .audio()?;
 
-        let global = octx.format().flags().contains(format::flag::Flags::GLOBAL_HEADER);
+        let global = octx
+            .format()
+            .flags()
+            .contains(format::flag::Flags::GLOBAL_HEADER);
 
         decoder.set_parameters(input.parameters())?;
 
@@ -70,13 +73,26 @@ impl Transcoder {
         encoder.set_format(
             codec
                 .formats()
-                .ok_or_else(|| format!("failed to get supported formats for codec: {}", codec.name()))?
+                .ok_or_else(|| {
+                    format!(
+                        "failed to get supported formats for codec: {}",
+                        codec.name()
+                    )
+                })?
                 .next()
                 .ok_or("no supported formats found for codec")?,
         );
 
-        encoder.set_bit_rate(if params.bit_rate > 0 { params.bit_rate } else { decoder.bit_rate() });
-        encoder.set_max_bit_rate(if params.max_bit_rate > 0 { params.max_bit_rate } else { decoder.max_bit_rate() });
+        encoder.set_bit_rate(if params.bit_rate > 0 {
+            params.bit_rate
+        } else {
+            decoder.bit_rate()
+        });
+        encoder.set_max_bit_rate(if params.max_bit_rate > 0 {
+            params.max_bit_rate
+        } else {
+            decoder.max_bit_rate()
+        });
         encoder.set_time_base((1, sample_rate));
         output.set_time_base((1, sample_rate));
 
@@ -121,11 +137,26 @@ impl Transcoder {
     }
 
     fn add_frame_to_filter(&mut self, frame: &ffmpeg::Frame) -> Result<(), ffmpeg::Error> {
-        self.filter.get("in").unwrap().source().add(frame)
+        if let Some(mut ctx) = self.filter.get("in") {
+            let mut source = ctx.source();
+            source.add(frame)
+        } else {
+            Err(ffmpeg::Error::Other {
+                errno: 0,
+            })
+        }
     }
 
+
     pub(crate) fn flush_filter(&mut self) -> Result<(), ffmpeg::Error> {
-        self.filter.get("in").unwrap().source().flush()
+        if let Some(mut ctx) = self.filter.get("in") {
+            let mut source = ctx.source();
+            source.flush()
+        } else {
+            Err(ffmpeg::Error::Other {
+                errno: 0,
+            })
+        }
     }
 
     pub(crate) fn get_and_process_filtered_frames(
@@ -134,7 +165,10 @@ impl Transcoder {
     ) -> Result<(), Box<dyn Error>> {
         let mut filtered = frame::Audio::empty();
         loop {
-            let mut ctx = self.filter.get("out").ok_or("cannot get context from filter")?;
+            let mut ctx = self
+                .filter
+                .get("out")
+                .ok_or("cannot get context from filter")?;
 
             if let Err(err) = ctx.sink().frame(&mut filtered) {
                 if err != ffmpeg::Error::Eof {
@@ -171,8 +205,12 @@ impl Transcoder {
 
             if let Err(mut err) = self.get_and_process_filtered_frames(octx) {
                 let expected = ffmpeg::Error::Other { errno: EAGAIN };
-                if err.downcast_mut::<ffmpeg::error::Error>().ok_or(ffmpeg::Error::Bug) == Err(expected) {
-                    continue
+                if err
+                    .downcast_mut::<ffmpeg::error::Error>()
+                    .ok_or(ffmpeg::Error::Bug)
+                    == Err(expected)
+                {
+                    continue;
                 }
             }
         }
@@ -206,11 +244,16 @@ fn filter_graph(
     filter.output("in", 0)?.input("out", 0)?.parse(spec)?;
     filter.validate()?;
 
-    println!("{}", filter.dump());
-
     if let Some(codec) = encoder.codec() {
-        if !codec.capabilities().contains(codec::capabilities::Capabilities::VARIABLE_FRAME_SIZE) {
-            filter.get("out").unwrap().sink().set_frame_size(encoder.frame_size());
+        if !codec
+            .capabilities()
+            .contains(codec::capabilities::Capabilities::VARIABLE_FRAME_SIZE)
+        {
+            filter
+                .get("out")
+                .unwrap()
+                .sink()
+                .set_frame_size(encoder.frame_size());
         }
     }
 

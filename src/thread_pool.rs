@@ -2,6 +2,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+use ffmpeg_next::log::Level;
 
 use tracing::{debug, error};
 
@@ -42,6 +43,7 @@ impl Worker {
         let thread = thread::spawn(move || {
             ffmpeg_next::init()
                 .unwrap_or_else(|err| tracing::error!("couldn't init FFmpeg: {:?}", err));
+            ffmpeg_next::util::log::set_level(Level::Quiet);
 
             loop {
                 let task = {

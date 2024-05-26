@@ -18,18 +18,12 @@ async fn main() {
         .init();
 
     let addr = env::var("LISTEN").unwrap_or_else(|_| "0.0.0.0:8090".to_string());
-    let pool = ThreadPool::new(match env::var("NUM_WORKERS") {
-        Ok(val) => match val.parse::<usize>() {
-            Ok(val) => {
-                if val > 0 {
-                    Some(val);
-                }
-                None
-            }
-            Err(_) => None,
-        },
-        Err(_) => None,
-    });
+    let pool = ThreadPool::new(
+        env::var("NUM_WORKERS")
+            .ok()
+            .and_then(|val| val.parse::<usize>().ok())
+            .filter(|&val| val > 0)
+    );
     let temp_dir = env::var("TEMP_DIR").unwrap_or_else(|_| {
         env::temp_dir()
             .to_str()

@@ -11,7 +11,7 @@ use tower_http::trace::TraceLayer;
 use uuid::Uuid;
 
 use crate::dto::{ConvertRequest, ConvertResponse};
-use crate::task::Task;
+use crate::task::{Task, TaskParams};
 use crate::thread_pool::ThreadPool;
 
 const CONTENT_LENGTH_LIMIT: usize = 30 * 1024 * 1024;
@@ -66,19 +66,19 @@ async fn enqueue_file(
                 None => return error_response("Invalid output path"),
             };
 
-            let task = Task::new(
-                task_id,
-                req.format,
-                req.codec,
-                req.codec_opts,
-                req.bit_rate,
-                req.max_bit_rate,
-                req.sample_rate,
-                req.channel_layout,
-                req.upload_url,
-                input_path.to_string(),
-                output_path.to_string(),
-            );
+            let params = TaskParams {
+                format: req.format,
+                codec: req.codec,
+                codec_opts: req.codec_opts,
+                bit_rate: req.bit_rate,
+                max_bit_rate: req.max_bit_rate,
+                sample_rate: req.sample_rate,
+                channel_layout: req.channel_layout,
+                upload_url: req.upload_url,
+                input_path: input_path.to_string(),
+                output_path: output_path.to_string(),
+            };
+            let task = Task::new(task_id, params);
 
             // Enqueue the task to the thread pool
             server.thread_pool.enqueue(task);
