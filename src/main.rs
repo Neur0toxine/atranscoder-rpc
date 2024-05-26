@@ -1,4 +1,5 @@
 use std::env;
+use tracing::Instrument;
 
 use tracing_subscriber::EnvFilter;
 
@@ -32,6 +33,7 @@ async fn main() {
             .unwrap()
     });
     Server::new(pool, temp_dir)
+        .start_cleanup_task()
         .serve(&addr)
         .await
         .expect("Cannot bind the addr")

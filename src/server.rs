@@ -1,13 +1,18 @@
+use std::ffi::OsStr;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 
 use axum::extract::{DefaultBodyLimit, State};
 use axum::http::StatusCode;
 use axum::routing::post;
 use axum::{Json, Router};
 use axum_typed_multipart::TypedMultipart;
+use tokio::fs;
 use tokio::net::TcpListener;
+use tokio::time::interval;
 use tower_http::trace::TraceLayer;
+use tracing::{debug, error};
 use uuid::Uuid;
 
 use crate::dto::{ConvertRequest, ConvertResponse};
@@ -15,6 +20,7 @@ use crate::task::{Task, TaskParams};
 use crate::thread_pool::ThreadPool;
 
 const CONTENT_LENGTH_LIMIT: usize = 30 * 1024 * 1024;
+const WORK_DIR_IN_OUT_LIFETIME: u64 = 60 * 60;
 
 pub struct Server {
     thread_pool: Arc<ThreadPool>,
@@ -27,6 +33,21 @@ impl Server {
             thread_pool: Arc::new(thread_pool),
             work_dir,
         }
+    }
+
+    pub fn start_cleanup_task(self) -> Self {
+        let dir_path = self.work_dir.clone();
+        tokio::spawn(async move {
+            let mut interval = interval(Duration::from_secs(60));
+            loop {
+                interval.tick().await;
+
+                if let Err(err) = cleanup_directory(dir_path.as_str()).await {
+                    error!("could not perform working directory cleanup: {}", err);
+                }
+            }
+        });
+        self
     }
 
     pub async fn serve(self, addr: &str) -> std::io::Result<()> {
@@ -103,4 +124,46 @@ fn error_response(msg: &str) -> (StatusCode, Json<ConvertResponse>) {
             error: Some(msg.to_string()),
         }),
     )
+}
+
+async fn cleanup_directory(dir_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    // Get the current time
+    let now = SystemTime::now();
+
+    // Read the directory
+    let mut entries = fs::read_dir(dir_path).await?;
+
+    // Iterate over directory entries
+    while let Some(entry) = entries.next_entry().await? {
+        let file_path = entry.path();
+
+        // Check if the entry is a file
+        if file_path.is_file() {
+            // Check if the file extension is ".atranscoder"
+            if let Some(extension) = file_path
+                .extension()
+                .and_then(OsStr::to_str)
+                .map(|ext| ext.to_lowercase())
+            {
+                if extension.eq("atranscoder") {
+                    // Get the metadata of the file
+                    let metadata = fs::metadata(&file_path).await?;
+
+                    // Get the last modified time of the file
+                    let modified_time = metadata.modified()?;
+
+                    // Calculate the duration since the last modification
+                    let duration_since_modified = now.duration_since(modified_time)?;
+
+                    // If the file is older than one hour, remove it
+                    if duration_since_modified > Duration::from_secs(WORK_DIR_IN_OUT_LIFETIME) {
+                        fs::remove_file(file_path.clone()).await?;
+                        debug!("removed file: {:?}", file_path);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
