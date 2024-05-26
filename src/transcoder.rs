@@ -228,10 +228,22 @@ fn filter_graph(
         decoder.channel_layout().bits()
     );
 
-    filter.add(&filter::find("abuffer").unwrap(), "in", &args)?;
-    filter.add(&filter::find("abuffersink").unwrap(), "out", "")?;
+    let abuffer_filter = match filter::find("abuffer") {
+        Some(filter) => filter,
+        None => return Err(ffmpeg::Error::Unknown),
+    };
+    filter.add(&abuffer_filter, "in", &args)?;
 
-    let mut out = filter.get("out").unwrap();
+    let abuffersink_filter = match filter::find("abuffersink") {
+        Some(filter) => filter,
+        None => return Err(ffmpeg::Error::Unknown),
+    };
+    filter.add(&abuffersink_filter, "out", "")?;
+
+    let mut out = match filter.get("out")  {
+        Some(filter) => filter,
+        None => return Err(ffmpeg::Error::Unknown),
+    };
     out.set_sample_format(encoder.format());
     out.set_channel_layout(encoder.channel_layout());
     out.set_sample_rate(encoder.rate());
@@ -244,11 +256,11 @@ fn filter_graph(
             .capabilities()
             .contains(codec::capabilities::Capabilities::VARIABLE_FRAME_SIZE)
         {
-            filter
-                .get("out")
-                .unwrap()
-                .sink()
-                .set_frame_size(encoder.frame_size());
+            if let Some(mut out_filter) = filter.get("out") {
+                out_filter
+                    .sink()
+                    .set_frame_size(encoder.frame_size());
+            }
         }
     }
 

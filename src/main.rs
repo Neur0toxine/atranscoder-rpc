@@ -1,5 +1,4 @@
 use std::env;
-use tracing::Instrument;
 
 use tracing_subscriber::EnvFilter;
 
