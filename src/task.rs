@@ -36,7 +36,11 @@ impl Task {
 
         std::fs::remove_file(Path::new(&self.params.input_path)).ok();
 
-        if let Err(err) = upload_file(&self.params.output_path, &self.params.upload_url) {
+        if let Err(err) = upload_file(
+            &self.id.to_string(),
+            &self.params.output_path,
+            &self.params.upload_url,
+        ) {
             error!(
                 "couldn't upload result for job id={}, file path {}: {}",
                 &self.id.to_string(),
@@ -211,6 +215,7 @@ fn send_error(
 }
 
 fn upload_file<P: AsRef<Path>>(
+    id: &str,
     file_path: P,
     url: &str,
 ) -> Result<Response, Box<dyn std::error::Error>> {
@@ -233,6 +238,7 @@ fn upload_file<P: AsRef<Path>>(
             "Content-Disposition",
             &format!("attachment; filename=\"{}\"", file_name),
         )
+        .set("X-Task-Id", id)
         .send_bytes(&buffer)?;
 
     if response.status() == 200 {

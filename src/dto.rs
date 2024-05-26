@@ -3,11 +3,6 @@ use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 
 #[derive(Serialize, Deserialize)]
-pub struct Error {
-    pub error: String,
-}
-
-#[derive(Serialize, Deserialize)]
 pub struct ConvertResponse {
     pub id: Option<String>,
     pub error: Option<String>,

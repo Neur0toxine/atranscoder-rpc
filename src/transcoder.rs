@@ -240,7 +240,7 @@ fn filter_graph(
     };
     filter.add(&abuffersink_filter, "out", "")?;
 
-    let mut out = match filter.get("out")  {
+    let mut out = match filter.get("out") {
         Some(filter) => filter,
         None => return Err(ffmpeg::Error::Unknown),
     };
@@ -257,9 +257,7 @@ fn filter_graph(
             .contains(codec::capabilities::Capabilities::VARIABLE_FRAME_SIZE)
         {
             if let Some(mut out_filter) = filter.get("out") {
-                out_filter
-                    .sink()
-                    .set_frame_size(encoder.frame_size());
+                out_filter.sink().set_frame_size(encoder.frame_size());
             }
         }
     }

@@ -21,7 +21,7 @@ curl --location 'http://localhost:8090/enqueue' \
     --form 'channelLayout="mono"' \
     --form 'uploadUrl="http://127.0.0.1:8909/upload"'
 ```
-3. Your `uploadUrl` will receive JSON response with job ID and error in case of failure and the entire transcoded file contents in case of success. Use `Content-Type` header to differentiate between the two data types.
+3. Your `uploadUrl` will receive JSON response with job ID and error in case of failure and the entire transcoded file contents in case of success (success request will have `X-Task-Id` header with task ID). Use `Content-Type` header to differentiate between the two data types.
 
 You can change configuration using this environment variables:
 - `LISTEN` - change this environment variable to change TCP listen address. Default is `0.0.0.0:8090`.
