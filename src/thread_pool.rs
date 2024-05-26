@@ -54,7 +54,9 @@ impl Worker {
                 match task {
                     Ok(task) => {
                         debug!("worker {} got a task; executing.", id);
-                        task.execute();
+                        if let Err(err) = task.execute() {
+                            error!("worker {} failed to finish the task: {:?}", id, err);
+                        }
                     }
                     Err(e) => {
                         error!("worker {} failed to receive task: {:?}", id, e);
