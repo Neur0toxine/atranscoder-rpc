@@ -70,6 +70,9 @@ impl Transcoder {
         encoder.set_rate(sample_rate);
         encoder.set_channel_layout(params.channel_layout);
 
+        #[cfg(not(feature = "ffmpeg_7_0"))]
+        encoder.set_channels(params.channel_layout.channels());
+
         encoder.set_format(
             codec
                 .formats()

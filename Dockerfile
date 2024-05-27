@@ -23,9 +23,10 @@ RUN apk add --no-cache \
     gnutls-dev && \
     mkdir -p /ffmpeg/{ffmpeg_build,bin} && \
     cd /ffmpeg && \
-    wget -O ffmpeg-7.0.1.tar.bz2 https://ffmpeg.org/releases/ffmpeg-7.0.1.tar.bz2 && \
-    tar xjvf ffmpeg-7.0.1.tar.bz2 && \
-    cd ffmpeg-7.0.1 && \
+    export FFMPEG_VERSION=6.1.1 && \
+    wget -O ffmpeg-$FFMPEG_VERSION.tar.bz2 https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.bz2 && \
+    tar xjvf ffmpeg-$FFMPEG_VERSION.tar.bz2 && \
+    cd ffmpeg-$FFMPEG_VERSION && \
     PKG_CONFIG_PATH="/ffmpeg/ffmpeg_build/lib/pkgconfig" ./configure \
       --prefix="/ffmpeg/ffmpeg_build" \
       --pkg-config-flags="--static" \

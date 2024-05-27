@@ -41,9 +41,9 @@ You can change configuration using this environment variables:
 - [x] Remove old conversion results and input files that are older than 1 hour.
 - [x] Remove input file after transcoding it.
 - [x] Do not upload files directly, add download route with streaming instead.
+- [x] Conversion from OGG Opus mono to HE-AAC v1 Stereo outputs high-pitched crackling audio.
+- [x] Conversion from OGG Opus mono to AAC sometimes crashes the app with SIGSEGV (this can be seen more often with very short audio).
 - [ ] If FFmpeg fails, `send_error` won't be called - fix that.
 - [ ] Default errors are returned in plain text. Change it to the JSON.
-- [ ] Conversion from OGG Opus mono to HE-AAC v1 Stereo outputs high-pitched crackling audio.
-- [ ] Conversion from OGG Opus mono to AAC sometimes crashes the app with SIGSEGV (this can be seen more often with very short audio).
 - [ ] Docker image for `amd64` and `arm64` (currently only `amd64` is supported because `arm64` cross-compilation with QEMU is sloooooooooooowwwww...).
 - [ ] Tests!
