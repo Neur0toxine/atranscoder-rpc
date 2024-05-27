@@ -1,11 +1,11 @@
+use std::env;
 use std::ffi::OsStr;
-use std::path::Path;
-use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use axum::extract::{DefaultBodyLimit, State};
+use axum::extract::{DefaultBodyLimit, Path, State};
 use axum::http::StatusCode;
-use axum::routing::post;
+use axum::response::IntoResponse;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_typed_multipart::TypedMultipart;
 use tokio::fs;
@@ -19,11 +19,21 @@ use crate::dto::{ConvertRequest, ConvertResponse};
 use crate::task::{Task, TaskParams};
 use crate::thread_pool::ThreadPool;
 
-const CONTENT_LENGTH_LIMIT: usize = 30 * 1024 * 1024;
+use axum::body::Body;
+use axum::body::Bytes;
+use futures_util::StreamExt;
+use std::path::Path as StdPath;
+use std::sync::Arc;
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
+use tokio_util::io::ReaderStream;
+
+const CONTENT_LENGTH_LIMIT: usize = 100 * 1024 * 1024;
 const WORK_DIR_IN_OUT_LIFETIME: u64 = 60 * 60;
 
 pub struct Server {
     thread_pool: Arc<ThreadPool>,
+    max_body_size: usize,
     work_dir: String,
 }
 
@@ -31,6 +41,9 @@ impl Server {
     pub(crate) fn new(thread_pool: ThreadPool, work_dir: String) -> Server {
         Server {
             thread_pool: Arc::new(thread_pool),
+            max_body_size: env::var("MAX_BODY_SIZE").map_or(CONTENT_LENGTH_LIMIT, |val| {
+                val.parse().map_or(CONTENT_LENGTH_LIMIT, |val| val)
+            }),
             work_dir,
         }
     }
@@ -55,8 +68,9 @@ impl Server {
         let app = Router::new()
             .route(
                 "/enqueue",
-                post(enqueue_file).layer(DefaultBodyLimit::max(CONTENT_LENGTH_LIMIT)),
+                post(enqueue_file).layer(DefaultBodyLimit::max(this.max_body_size)),
             )
+            .route("/get/:identifier", get(download_file))
             .with_state(this)
             .layer(TraceLayer::new_for_http());
 
@@ -71,8 +85,8 @@ async fn enqueue_file(
     TypedMultipart(req): TypedMultipart<ConvertRequest>,
 ) -> (StatusCode, Json<ConvertResponse>) {
     let task_id = Uuid::new_v4();
-    let input = Path::new(&server.work_dir).join(format!("{}.in.atranscoder", task_id));
-    let output = Path::new(&server.work_dir).join(format!("{}.out.atranscoder", task_id));
+    let input = StdPath::new(&server.work_dir).join(format!("{}.in.atranscoder", task_id));
+    let output = StdPath::new(&server.work_dir).join(format!("{}.out.atranscoder", task_id));
 
     let file = req.file;
 
@@ -95,7 +109,7 @@ async fn enqueue_file(
                 max_bit_rate: req.max_bit_rate,
                 sample_rate: req.sample_rate,
                 channel_layout: req.channel_layout,
-                upload_url: req.upload_url,
+                callback_url: req.callback_url,
                 input_path: input_path.to_string(),
                 output_path: output_path.to_string(),
             };
@@ -114,6 +128,49 @@ async fn enqueue_file(
         }
         Err(_) => error_response("Cannot save the file"),
     }
+}
+
+async fn download_file(
+    State(server): State<Arc<Server>>,
+    Path(identifier): Path<String>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let file_name = format!("{}.out.atranscoder", identifier);
+    let file_path = StdPath::new(&server.work_dir).join(file_name);
+
+    if !file_path.exists() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let mut file = match File::open(&file_path).await {
+        Ok(file) => file,
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    };
+
+    let mut buffer = [0; 512];
+    let n = match file.read(&mut buffer).await {
+        Ok(n) if n > 0 => n,
+        _ => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    };
+
+    let mime_type = infer::get(&buffer[..n]).map_or("application/octet-stream".to_string(), |t| {
+        t.mime_type().to_string()
+    });
+
+    let file = match File::open(&file_path).await {
+        Ok(file) => file,
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    };
+
+    let stream = ReaderStream::new(file);
+    let body = Body::from_stream(stream.map(|result| match result {
+        Ok(bytes) => Ok(Bytes::from(bytes)),
+        Err(err) => Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            err.to_string(),
+        )),
+    }));
+
+    Ok(([(http::header::CONTENT_TYPE, mime_type)], body))
 }
 
 fn error_response(msg: &str) -> (StatusCode, Json<ConvertResponse>) {

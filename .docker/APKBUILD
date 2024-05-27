@@ -1,0 +1,33 @@
+# Based on https://github.com/alpinelinux/aports/blob/a7514b6cb4a2a50704a9685a94519a9d6307f276/community/fdk-aac/APKBUILD
+# This APKBUILD uses non-stripped version of fdk-aac.
+pkgname=fdk-aac-nonfree
+pkgver=2.0.2
+pkgrel=4
+pkgdesc="Fraunhofer FDK AAC codec library with non-free components"
+url="https://github.com/mstorsjo/fdk-aac"
+arch="all"
+license="FDK-AAC"
+makedepends="cmake samurai"
+source="https://github.com/mstorsjo/fdk-aac/archive/refs/tags/v$pkgver.zip"
+options="!check" # no upstream/available testsuite
+builddir="$srcdir/fdk-aac-$pkgver"
+
+build() {
+        cmake -B build -G Ninja \
+                -DCMAKE_INSTALL_PREFIX=/usr \
+                -DCMAKE_INSTALL_LIBDIR=lib \
+                -DBUILD_SHARED_LIBS=True \
+                -DCMAKE_BUILD_TYPE=MinSizeRel
+
+        cmake --build build
+}
+
+package() {
+        DESTDIR="$pkgdir" cmake --install build
+        install -Dm644 NOTICE \
+                "$pkgdir"/usr/share/licenses/libfdk-aac/NOTICE
+}
+
+sha512sums="
+003f23a6b9e14757905b9cd331a442ed001ed7b835aae2c75f93db2d3a51ec15b5c4366a21bb211195cca2254e8a9805dab33a16fa670f39bd265d00b7ba5493  v2.0.2.zip
+"

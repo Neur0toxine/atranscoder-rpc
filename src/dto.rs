@@ -18,7 +18,7 @@ pub struct ConvertRequest {
     pub max_bit_rate: usize,
     pub sample_rate: i32,
     pub channel_layout: String,
-    pub upload_url: String,
+    pub callback_url: String,
 
     #[form_data(limit = "25MiB")]
     pub file: FieldData<NamedTempFile>,

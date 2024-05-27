@@ -1,14 +1,11 @@
 extern crate ffmpeg_next as ffmpeg;
 
-use std::any::Any;
 use std::error::Error;
 
-use crate::task::params_to_avdictionary;
 use ffmpeg::{codec, filter, format, frame, media};
-use ffmpeg_next::codec::Parameters;
 use ffmpeg_next::error::EAGAIN;
-use ffmpeg_next::Dictionary;
-use tracing::log::debug;
+
+use crate::task::params_to_avdictionary;
 
 pub struct Transcoder {
     pub(crate) stream: usize,

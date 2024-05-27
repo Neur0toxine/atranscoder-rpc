@@ -12,30 +12,36 @@ Transcoding can be done like this:
 2. Upload file for transcoding:
 ```bash
 curl --location 'http://localhost:8090/enqueue' \
-    --form 'file=@"/home/user/Music/test.mp3"' \
-    --form 'format="adts"' \
-    --form 'codec="aac"' \
-    --form 'bitRate="64000"' \
-    --form 'maxBitRate="64000"' \
-    --form 'sampleRate="8000"' \
-    --form 'channelLayout="mono"' \
-    --form 'uploadUrl="http://127.0.0.1:8909/upload"'
+--form 'file=@"/home/user/Music/test.mp3"' \
+--form 'format="mp4"' \
+--form 'codec="libfdk_aac"' \
+--form 'codecOpts="profile=aac_he"' \
+--form 'bitRate="160000"' \
+--form 'maxBitRate="160000"' \
+--form 'sampleRate="44100"' \
+--form 'channelLayout="stereo"' \
+--form 'callbackUrl="http://127.0.0.1:8909/callback"'
 ```
-3. Your `uploadUrl` will receive JSON response with job ID and error in case of failure and the entire transcoded file contents in case of success (success request will have `X-Task-Id` header with task ID). Use `Content-Type` header to differentiate between the two data types.
+3. Your `callbackUrl` will receive JSON response with job ID and error in case of failure. Error will be null if transcoding was successful.
+4. You can download transcoded file like this (replace `job_id` with the ID you've received):
+```bash
+curl -L http://localhost:8090/get/job_id -o file.mp4
+```
 
 You can change configuration using this environment variables:
 - `LISTEN` - change this environment variable to change TCP listen address. Default is `0.0.0.0:8090`.
 - `NUM_WORKERS` - can be used to change how many threads will be used to transcode incoming files. Default is equal to logical CPUs.
 - `TEMP_DIR` - this can be used to change which directory should be used to store incoming downloads and transcoding results. Useful if you want to use a Docker volume for this. Default is system temp directory (`/tmp` for Linux).
 - `LOG_LEVEL` - changes log verbosity, default is `info`.
+- `MAX_BODY_SIZE` - changes max body size for `/enqueue`. Default is 100MB.
+- `FFMPEG_VERBOSE` - if set to `1` changes FFmpeg log level from quiet to trace.
 
 # Roadmap
 - [x] Implement somewhat acceptable error handling.
 - [x] Remove old conversion results and input files that are older than 1 hour.
 - [x] Remove input file after transcoding it.
-- [x] Implement file upload to `uploadUrl` (if `Content-Type: application/json` then conversion was not successful and body contains an error info).
-- [x] Remove transcoding result after uploading it to the `uploadUrl`.
-- [ ] Docker image for `amd64` and `arm64` (currently only `amd64` is supported).
-- [ ] ~~Restart threads in case of panic.~~ It's better to not panic. Current error handling seems ok for now.
-- [ ] ~~Statically linked binary for Docker image & result docker image based on `scratch` (reduce image size).~~ Not yet, see [Dockerfile.scratch](Dockerfile.scratch).
+- [x] Do not upload files directly, add download route with streaming instead.
+- [ ] If FFmpeg fails, `send_error` won't be called - fix that.
+- [ ] Default errors are returned in plain text. Change it to the JSON.
+- [ ] Docker image for `amd64` and `arm64` (currently only `amd64` is supported because `arm64` cross-compilation with QEMU is sloooooooooooowwwww...).
 - [ ] Tests!

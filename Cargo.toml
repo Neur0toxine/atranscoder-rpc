@@ -16,4 +16,7 @@ tower-http = { version = "0.5.2", features = ["trace"] }
 num_cpus = "1.16.0"
 ffmpeg-next = "7.0.1"
 ureq = { version = "*", features = ["json", "charset"] }
-mime_guess = "2.0.4"
+http = "1.1.0"
+tokio-util = { version = "0.7.11", features = ["io"] }
+futures-util = "0.3.30"
+infer = "0.15.0"

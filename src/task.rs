@@ -2,10 +2,7 @@ use crate::dto::ConvertResponse;
 use crate::transcoder::{Transcoder, TranscoderParams};
 use ffmpeg_next::channel_layout::ChannelLayout;
 use ffmpeg_next::{format, Dictionary};
-use mime_guess::from_path;
 use std::error::Error;
-use std::fs::File;
-use std::io::Read;
 use std::path::Path;
 use tracing::{debug, error};
 use ureq::Response;
@@ -28,7 +25,7 @@ impl Task {
             send_error(
                 self.id,
                 format!("Couldn't transcode: {}", err).as_str(),
-                &self.params.upload_url,
+                &self.params.callback_url,
             )
             .ok();
             return Err(err);
@@ -36,26 +33,21 @@ impl Task {
 
         std::fs::remove_file(Path::new(&self.params.input_path)).ok();
 
-        if let Err(err) = upload_file(
-            &self.id.to_string(),
-            &self.params.output_path,
-            &self.params.upload_url,
-        ) {
+        if let Err(err) = send_ok(self.id, &self.params.callback_url) {
             error!(
-                "couldn't upload result for job id={}, file path {}: {}",
+                "couldn't send result callback for job id={}, url {}: {}",
                 &self.id.to_string(),
-                &self.params.output_path,
+                &self.params.callback_url,
                 err
             );
         } else {
             debug!(
-                "job id={} result was uploaded to {}",
+                "job id={} result was sent to callback {}",
                 &self.id.to_string(),
-                &self.params.upload_url
+                &self.params.callback_url
             );
         }
 
-        std::fs::remove_file(Path::new(&self.params.output_path)).ok();
         Ok(())
     }
 
@@ -193,7 +185,7 @@ pub struct TaskParams {
     pub channel_layout: String,
     pub input_path: String,
     pub output_path: String,
-    pub upload_url: String,
+    pub callback_url: String,
 }
 
 fn send_error(
@@ -211,41 +203,22 @@ fn send_error(
     if response.status() == 200 {
         Ok(response)
     } else {
-        Err(format!("Failed to send an error. Status: {}", response.status()).into())
+        Err(format!("failed to send callback to {}. Status: {}", url, response.status()).into())
     }
 }
 
-fn upload_file<P: AsRef<Path>>(
-    id: &str,
-    file_path: P,
-    url: &str,
-) -> Result<Response, Box<dyn std::error::Error>> {
-    let path = file_path.as_ref();
-    let file_name = path
-        .file_name()
-        .ok_or("Invalid file path")?
-        .to_str()
-        .ok_or("Invalid file name")?;
-
-    let mut file = File::open(path)?;
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer)?;
-
-    let mime_type = from_path(path).first_or_octet_stream();
-
+fn send_ok(id: uuid::Uuid, url: &str) -> Result<Response, Box<dyn std::error::Error>> {
     let response = ureq::post(url)
-        .set("Content-Type", mime_type.as_ref())
-        .set(
-            "Content-Disposition",
-            &format!("attachment; filename=\"{}\"", file_name),
-        )
-        .set("X-Task-Id", id)
-        .send_bytes(&buffer)?;
+        .set("Content-Type", "application/json")
+        .send_json(ConvertResponse {
+            id: Some(id.to_string()),
+            error: None,
+        })?;
 
     if response.status() == 200 {
         Ok(response)
     } else {
-        Err(format!("Failed to upload file. Status: {}", response.status()).into())
+        Err(format!("failed to send callback to {}. Status: {}", url, response.status()).into())
     }
 }
 

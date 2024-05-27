@@ -4,7 +4,6 @@ FROM alpine:3.20 AS builder
 RUN apk add --no-cache \
     rust \
     cargo \
-    fdk-aac \
     fdk-aac-dev \
     clang16 \
     clang16-static \
@@ -16,16 +15,9 @@ RUN apk add --no-cache \
     build-base \
     nasm \
     yasm \
-    aom-dev \
-    dav1d-dev \
     lame-dev \
     opus-dev \
-    svt-av1-dev \
     libvorbis-dev \
-    libvpx-dev \
-    x264-dev \
-    x265-dev \
-    numactl-dev \
     libass-dev \
     libunistring-dev \
     gnutls-dev && \
@@ -44,18 +36,11 @@ RUN apk add --no-cache \
       --bindir="/ffmpeg/bin" \
       --enable-gpl \
       --enable-gnutls \
-      --enable-libaom \
       --enable-libass \
       --enable-libfdk-aac \
-      --enable-libfreetype \
       --enable-libmp3lame \
       --enable-libopus \
-      --enable-libsvtav1 \
-      --enable-libdav1d \
       --enable-libvorbis \
-      --enable-libvpx \
-      --enable-libx264 \
-      --enable-libx265 \
       --enable-nonfree && \
     PATH="/ffmpeg/bin:$PATH" make -j$(nproc) && \
     make install && \
@@ -68,6 +53,18 @@ RUN cd /build && \
     export PKG_CONFIG_PATH="/ffmpeg/ffmpeg_build/lib/pkgconfig" && \
     cargo build --verbose --release
 
+FROM alpine:3.20 AS fdk-builder
+COPY ./.docker/APKBUILD /fdk-aac/APKBUILD
+RUN apk add --no-cache sudo abuild build-base cmake samurai && \
+    cd /fdk-aac && \
+    adduser -G abuild -g "Alpine Package Builder" -s /bin/ash -D builder && \
+    echo "builder ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
+    echo "root ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
+    chown -R builder:abuild /fdk-aac && \
+    chmod 777 /tmp && \
+    sudo -u builder sh -c 'abuild-keygen -ani && abuild -r' && \
+    find /home/builder -name 'fdk-aac*' -exec mv {} /fdk-aac.apk \;
+
 FROM alpine:3.20
 WORKDIR /
 RUN apk add --no-cache  \
@@ -75,11 +72,12 @@ RUN apk add --no-cache  \
     ffmpeg-libavformat  \
     ffmpeg-libavfilter  \
     ffmpeg-libavdevice  \
-    fdk-aac  \
     dumb-init  \
     mailcap  \
     tzdata  \
     gnutls
+COPY --from=fdk-builder /fdk-aac.apk /tmp/fdk-aac.apk
+RUN apk add --allow-untrusted /tmp/fdk-aac.apk && rm /tmp/fdk-aac.apk
 COPY --from=builder /build/target/release/atranscoder-rpc /usr/local/bin
 EXPOSE 8090
 ENTRYPOINT ["/usr/bin/dumb-init", "--", "/usr/local/bin/atranscoder-rpc"]
