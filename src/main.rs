@@ -11,6 +11,8 @@ mod task;
 mod thread_pool;
 mod transcoder;
 
+const WORK_DIR_IN_OUT_LIFETIME: u64 = 60 * 60;
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -32,7 +34,12 @@ async fn main() {
             .unwrap()
     });
     Server::new(pool, temp_dir)
-        .start_cleanup_task()
+        .start_cleanup_task(
+            env::var("RESULT_TTL_SEC")
+                .ok()
+                .and_then(|val| val.parse::<u64>().ok())
+                .map_or(WORK_DIR_IN_OUT_LIFETIME, |val| val),
+        )
         .serve(&addr)
         .await
         .expect("Cannot bind the addr")

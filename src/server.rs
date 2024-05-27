@@ -29,7 +29,6 @@ use tokio::io::AsyncReadExt;
 use tokio_util::io::ReaderStream;
 
 const CONTENT_LENGTH_LIMIT: usize = 100 * 1024 * 1024;
-const WORK_DIR_IN_OUT_LIFETIME: u64 = 60 * 60;
 
 pub struct Server {
     thread_pool: Arc<ThreadPool>,
@@ -48,14 +47,14 @@ impl Server {
         }
     }
 
-    pub fn start_cleanup_task(self) -> Self {
+    pub fn start_cleanup_task(self, ttl: u64) -> Self {
         let dir_path = self.work_dir.clone();
         tokio::spawn(async move {
             let mut interval = interval(Duration::from_secs(60));
             loop {
                 interval.tick().await;
 
-                if let Err(err) = cleanup_directory(dir_path.as_str()).await {
+                if let Err(err) = cleanup_directory(dir_path.as_str(), ttl).await {
                     error!("could not perform working directory cleanup: {}", err);
                 }
             }
@@ -183,7 +182,7 @@ fn error_response(msg: &str) -> (StatusCode, Json<ConvertResponse>) {
     )
 }
 
-async fn cleanup_directory(dir_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+async fn cleanup_directory(dir_path: &str, ttl: u64) -> Result<(), Box<dyn std::error::Error>> {
     // Get the current time
     let now = SystemTime::now();
 
@@ -213,7 +212,7 @@ async fn cleanup_directory(dir_path: &str) -> Result<(), Box<dyn std::error::Err
                     let duration_since_modified = now.duration_since(modified_time)?;
 
                     // If the file is older than one hour, remove it
-                    if duration_since_modified > Duration::from_secs(WORK_DIR_IN_OUT_LIFETIME) {
+                    if duration_since_modified > Duration::from_secs(ttl) {
                         fs::remove_file(file_path.clone()).await?;
                         debug!("removed file: {:?}", file_path);
                     }

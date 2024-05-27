@@ -203,7 +203,12 @@ fn send_error(
     if response.status() == 200 {
         Ok(response)
     } else {
-        Err(format!("failed to send callback to {}. Status: {}", url, response.status()).into())
+        Err(format!(
+            "failed to send callback to {}. Status: {}",
+            url,
+            response.status()
+        )
+        .into())
     }
 }
 
@@ -218,7 +223,12 @@ fn send_ok(id: uuid::Uuid, url: &str) -> Result<Response, Box<dyn std::error::Er
     if response.status() == 200 {
         Ok(response)
     } else {
-        Err(format!("failed to send callback to {}. Status: {}", url, response.status()).into())
+        Err(format!(
+            "failed to send callback to {}. Status: {}",
+            url,
+            response.status()
+        )
+        .into())
     }
 }
 
