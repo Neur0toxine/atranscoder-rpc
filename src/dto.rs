@@ -20,6 +20,6 @@ pub struct ConvertRequest {
     pub channel_layout: String,
     pub callback_url: String,
 
-    #[form_data(limit = "25MiB")]
+    #[form_data(limit = "1GiB")]
     pub file: FieldData<NamedTempFile>,
 }

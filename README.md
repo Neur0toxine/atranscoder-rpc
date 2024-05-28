@@ -33,7 +33,7 @@ You can change configuration using this environment variables:
 - `NUM_WORKERS` - can be used to change how many threads will be used to transcode incoming files. Default is equal to logical CPUs.
 - `TEMP_DIR` - this can be used to change which directory should be used to store incoming downloads and transcoding results. Useful if you want to use a Docker volume for this. Default is system temp directory (`/tmp` for Linux).
 - `LOG_LEVEL` - changes log verbosity, default is `info`.
-- `MAX_BODY_SIZE` - changes max body size for `/enqueue`. Default is 100MB.
+- `MAX_BODY_SIZE` - changes max body size for `/enqueue`. Default is 100MB, maximum is 1GiB (which is still *a lot* for the multipart form).
 - `RESULT_TTL_SEC` - sets result ttl in seconds, minimum 60 seconds. Default is 3600 (transcoding results are being kept and can be downloaded for an hour).
 - `FFMPEG_VERBOSE` - if set to `1` changes FFmpeg log level from quiet to trace.
 
