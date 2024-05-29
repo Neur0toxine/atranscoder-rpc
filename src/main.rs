@@ -11,6 +11,7 @@ mod server;
 mod task;
 mod thread_pool;
 mod transcoder;
+mod json_error;
 
 const WORK_DIR_IN_OUT_LIFETIME: u64 = 60 * 60;
 

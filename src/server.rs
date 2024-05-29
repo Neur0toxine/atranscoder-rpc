@@ -1,33 +1,35 @@
 use std::env;
 use std::ffi::OsStr;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
+use axum::{Json, Router};
+use axum::body::Body;
+use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
-use axum::{Json, Router};
 use axum_typed_multipart::TypedMultipart;
+use futures_util::StreamExt;
 use tokio::fs;
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
 use tokio::time::interval;
+use tokio_util::io::ReaderStream;
+use tower::ServiceBuilder;
 use tower_http::trace::TraceLayer;
 use tracing::{debug, error};
 use uuid::Uuid;
 
 use crate::dto::{ConvertRequest, ConvertResponse, ConvertURLRequest, ErrorResponse};
-use crate::task::{Task, TaskParams};
-use crate::thread_pool::ThreadPool;
 
 use crate::filepath;
 use crate::filepath::{in_file_path, out_file_path};
-use axum::body::Body;
-use axum::body::Bytes;
-use futures_util::StreamExt;
-use std::sync::Arc;
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
-use tokio_util::io::ReaderStream;
+use crate::json_error::JsonError;
+use crate::task::{Task, TaskParams};
+use crate::thread_pool::ThreadPool;
 
 const CONTENT_LENGTH_LIMIT: usize = 100 * 1024 * 1024;
 
@@ -73,7 +75,11 @@ impl Server {
             .route("/enqueue_url", post(enqueue_url))
             .route("/get/:identifier", get(download_file))
             .with_state(this)
-            .layer(TraceLayer::new_for_http())
+            .layer(
+                ServiceBuilder::new()
+                    .layer(TraceLayer::new_for_http())
+                    .layer(JsonError)
+            )
             .fallback(handler_not_found);
 
         tracing::info!("listening on {addr}");
