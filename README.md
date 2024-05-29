@@ -51,7 +51,9 @@ Mandatory fields:
 - `sample_rate`
 - `url` (for `/enqueue_url`)
 
-You can change configuration using this environment variables:
+# Configuration
+
+You can change configuration using these environment variables:
 - `LISTEN` - change this environment variable to change TCP listen address. Default is `0.0.0.0:8090`.
 - `NUM_WORKERS` - can be used to change how many threads will be used to transcode incoming files. Default is equal to logical CPUs.
 - `TEMP_DIR` - this can be used to change which directory should be used to store incoming downloads and transcoding results. Useful if you want to use a Docker volume for this. Default is system temp directory (`/tmp` for Linux).
