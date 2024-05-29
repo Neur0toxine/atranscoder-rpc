@@ -19,8 +19,8 @@ pub struct Transcoder {
 pub struct TranscoderParams {
     pub codec: String,
     pub codec_opts: Option<String>,
-    pub bit_rate: usize,
-    pub max_bit_rate: usize,
+    pub bit_rate: Option<usize>,
+    pub max_bit_rate: Option<usize>,
     pub sample_rate: i32,
     pub channel_layout: ffmpeg::channel_layout::ChannelLayout,
 }
@@ -86,16 +86,22 @@ impl Transcoder {
                 .ok_or("no supported formats found for codec")?,
         );
 
-        encoder.set_bit_rate(if params.bit_rate > 0 {
-            params.bit_rate
-        } else {
-            decoder.bit_rate()
-        });
-        encoder.set_max_bit_rate(if params.max_bit_rate > 0 {
-            params.max_bit_rate
-        } else {
-            decoder.max_bit_rate()
-        });
+        if let Some(bit_rate) = params.bit_rate {
+            encoder.set_bit_rate(if bit_rate > 0 {
+                bit_rate
+            } else {
+                decoder.bit_rate()
+            });
+        }
+
+        if let Some(max_bit_rate) = params.max_bit_rate {
+            encoder.set_max_bit_rate(if max_bit_rate > 0 {
+                max_bit_rate
+            } else {
+                decoder.max_bit_rate()
+            });
+        }
+
         encoder.set_time_base((1, sample_rate));
         output.set_time_base((1, sample_rate));
 

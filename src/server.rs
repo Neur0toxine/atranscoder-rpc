@@ -15,14 +15,15 @@ use tower_http::trace::TraceLayer;
 use tracing::{debug, error};
 use uuid::Uuid;
 
-use crate::dto::{ConvertRequest, ConvertResponse};
+use crate::dto::{ConvertRequest, ConvertResponse, ConvertURLRequest};
 use crate::task::{Task, TaskParams};
 use crate::thread_pool::ThreadPool;
 
+use crate::filepath;
+use crate::filepath::{in_file_path, out_file_path};
 use axum::body::Body;
 use axum::body::Bytes;
 use futures_util::StreamExt;
-use std::path::Path as StdPath;
 use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
@@ -69,6 +70,7 @@ impl Server {
                 "/enqueue",
                 post(enqueue_file).layer(DefaultBodyLimit::max(this.max_body_size)),
             )
+            .route("/enqueue_url", post(enqueue_url))
             .route("/get/:identifier", get(download_file))
             .with_state(this)
             .layer(TraceLayer::new_for_http());
@@ -79,13 +81,58 @@ impl Server {
     }
 }
 
+async fn enqueue_url(
+    State(server): State<Arc<Server>>,
+    Json(req): Json<ConvertURLRequest>,
+) -> (StatusCode, Json<ConvertResponse>) {
+    let task_id = Uuid::new_v4();
+    let input = in_file_path(&server.work_dir, task_id.to_string());
+    let output = out_file_path(&server.work_dir, task_id.to_string());
+
+    let input_path = match input.to_str() {
+        Some(path) => path,
+        None => return error_response("Invalid input path"),
+    };
+    let output_path = match output.to_str() {
+        Some(path) => path,
+        None => return error_response("Invalid output path"),
+    };
+
+    let params = TaskParams {
+        format: req.format,
+        codec: req.codec,
+        codec_opts: req.codec_opts,
+        bit_rate: req.bit_rate,
+        max_bit_rate: req.max_bit_rate,
+        sample_rate: req.sample_rate,
+        channel_layout: req.channel_layout,
+        callback_url: req.callback_url,
+        input_path: input_path.to_string(),
+        output_path: output_path.to_string(),
+        url: Some(req.url),
+        max_body_size: server.max_body_size,
+    };
+    let task = Task::new(task_id, params);
+
+    // Enqueue the task to the thread pool
+    server.thread_pool.enqueue(task);
+
+    (
+        StatusCode::CREATED,
+        Json::from(ConvertResponse {
+            id: Some(task_id.to_string()),
+            error: None,
+        }),
+    )
+}
+
 async fn enqueue_file(
     State(server): State<Arc<Server>>,
     TypedMultipart(req): TypedMultipart<ConvertRequest>,
 ) -> (StatusCode, Json<ConvertResponse>) {
     let task_id = Uuid::new_v4();
-    let input = StdPath::new(&server.work_dir).join(format!("{}.in.atranscoder", task_id));
-    let output = StdPath::new(&server.work_dir).join(format!("{}.out.atranscoder", task_id));
+    let input = in_file_path(&server.work_dir, task_id.to_string());
+    let output = out_file_path(&server.work_dir, task_id.to_string());
 
     let file = req.file;
 
@@ -111,6 +158,8 @@ async fn enqueue_file(
                 callback_url: req.callback_url,
                 input_path: input_path.to_string(),
                 output_path: output_path.to_string(),
+                url: None,
+                max_body_size: server.max_body_size,
             };
             let task = Task::new(task_id, params);
 
@@ -133,8 +182,7 @@ async fn download_file(
     State(server): State<Arc<Server>>,
     Path(identifier): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let file_name = format!("{}.out.atranscoder", identifier);
-    let file_path = StdPath::new(&server.work_dir).join(file_name);
+    let file_path = out_file_path(&server.work_dir, identifier);
 
     if !file_path.exists() {
         return Err(StatusCode::NOT_FOUND);
@@ -201,7 +249,7 @@ async fn cleanup_directory(dir_path: &str, ttl: u64) -> Result<(), Box<dyn std::
                 .and_then(OsStr::to_str)
                 .map(|ext| ext.to_lowercase())
             {
-                if extension.eq("atranscoder") {
+                if extension.eq(filepath::EXT) {
                     // Get the metadata of the file
                     let metadata = fs::metadata(&file_path).await?;
 

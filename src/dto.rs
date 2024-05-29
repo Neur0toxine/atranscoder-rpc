@@ -9,17 +9,29 @@ pub struct ConvertResponse {
 }
 
 #[derive(TryFromMultipart)]
-#[try_from_multipart(rename_all = "camelCase")]
 pub struct ConvertRequest {
     pub format: String,
     pub codec: String,
     pub codec_opts: Option<String>,
-    pub bit_rate: usize,
-    pub max_bit_rate: usize,
+    pub bit_rate: Option<usize>,
+    pub max_bit_rate: Option<usize>,
     pub sample_rate: i32,
-    pub channel_layout: String,
-    pub callback_url: String,
+    pub channel_layout: Option<String>,
+    pub callback_url: Option<String>,
 
     #[form_data(limit = "1GiB")]
     pub file: FieldData<NamedTempFile>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ConvertURLRequest {
+    pub format: String,
+    pub codec: String,
+    pub codec_opts: Option<String>,
+    pub bit_rate: Option<usize>,
+    pub max_bit_rate: Option<usize>,
+    pub sample_rate: i32,
+    pub channel_layout: Option<String>,
+    pub url: String,
+    pub callback_url: Option<String>,
 }

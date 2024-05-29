@@ -6,6 +6,7 @@ use crate::server::Server;
 use crate::thread_pool::ThreadPool;
 
 mod dto;
+mod filepath;
 mod server;
 mod task;
 mod thread_pool;
