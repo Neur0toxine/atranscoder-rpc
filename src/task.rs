@@ -4,11 +4,10 @@ use ffmpeg_next::channel_layout::ChannelLayout;
 use ffmpeg_next::{format, Dictionary};
 use std::error::Error;
 use std::fs::File;
-use std::io::{self, Write};
+use std::io::Write;
 use std::path::Path;
 use tracing::{debug, error};
 use ureq::Error as UreqError;
-use ureq::Response;
 
 #[derive(Clone)]
 pub struct Task {

@@ -15,7 +15,7 @@ use tower_http::trace::TraceLayer;
 use tracing::{debug, error};
 use uuid::Uuid;
 
-use crate::dto::{ConvertRequest, ConvertResponse, ConvertURLRequest};
+use crate::dto::{ConvertRequest, ConvertResponse, ConvertURLRequest, ErrorResponse};
 use crate::task::{Task, TaskParams};
 use crate::thread_pool::ThreadPool;
 
@@ -73,7 +73,8 @@ impl Server {
             .route("/enqueue_url", post(enqueue_url))
             .route("/get/:identifier", get(download_file))
             .with_state(this)
-            .layer(TraceLayer::new_for_http());
+            .layer(TraceLayer::new_for_http())
+            .fallback(handler_not_found);
 
         tracing::info!("listening on {addr}");
         let listener = TcpListener::bind(addr).await?;
@@ -218,6 +219,10 @@ async fn download_file(
     }));
 
     Ok(([(http::header::CONTENT_TYPE, mime_type)], body))
+}
+
+async fn handler_not_found() -> impl IntoResponse {
+    (StatusCode::NOT_FOUND, Json::from(ErrorResponse { error: "not found".to_string() }))
 }
 
 fn error_response(msg: &str) -> (StatusCode, Json<ConvertResponse>) {

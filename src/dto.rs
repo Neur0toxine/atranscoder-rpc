@@ -35,3 +35,8 @@ pub struct ConvertURLRequest {
     pub url: String,
     pub callback_url: Option<String>,
 }
+
+#[derive(Serialize)]
+pub(crate) struct ErrorResponse {
+    pub(crate) error: String
+}
