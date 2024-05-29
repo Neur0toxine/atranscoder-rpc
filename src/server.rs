@@ -29,7 +29,7 @@ use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tokio_util::io::ReaderStream;
 
-const CONTENT_LENGTH_LIMIT: usize = 100 * 1024 * 1024;
+const CONTENT_LENGTH_LIMIT: usize = 1024 * 1024 * 1024; // 1GB
 
 pub struct Server {
     thread_pool: Arc<ThreadPool>,
