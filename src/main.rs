@@ -11,6 +11,7 @@ mod server;
 mod task;
 mod thread_pool;
 mod transcoder;
+mod api_key;
 
 const WORK_DIR_IN_OUT_LIFETIME: u64 = 60 * 60;
 
@@ -34,7 +35,12 @@ async fn main() {
             .parse()
             .unwrap()
     });
-    Server::new(pool, temp_dir)
+    let api_keys = env::var("API_KEYS")
+        .unwrap_or_default()
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .collect();
+    Server::new(pool, temp_dir, api_keys)
         .start_cleanup_task(
             env::var("RESULT_TTL_SEC")
                 .ok()

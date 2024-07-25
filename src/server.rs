@@ -7,6 +7,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use axum::middleware::from_fn_with_state;
 use axum_typed_multipart::TypedMultipart;
 use tokio::fs;
 use tokio::net::TcpListener;
@@ -21,6 +22,7 @@ use crate::thread_pool::ThreadPool;
 
 use crate::filepath;
 use crate::filepath::{in_file_path, out_file_path};
+use crate::api_key::api_key_middleware;
 use axum::body::Body;
 use axum::body::Bytes;
 use futures_util::StreamExt;
@@ -33,18 +35,20 @@ const CONTENT_LENGTH_LIMIT: usize = 1024 * 1024 * 1024; // 1GB
 
 pub struct Server {
     thread_pool: Arc<ThreadPool>,
+    pub api_keys: Vec<String>,
     max_body_size: usize,
     work_dir: String,
 }
 
 impl Server {
-    pub(crate) fn new(thread_pool: ThreadPool, work_dir: String) -> Server {
+    pub(crate) fn new(thread_pool: ThreadPool, work_dir: String, api_keys: Vec<String>) -> Server {
         Server {
             thread_pool: Arc::new(thread_pool),
             max_body_size: env::var("MAX_BODY_SIZE").map_or(CONTENT_LENGTH_LIMIT, |val| {
                 val.parse().map_or(CONTENT_LENGTH_LIMIT, |val| val)
             }),
             work_dir,
+            api_keys,
         }
     }
 
@@ -65,21 +69,25 @@ impl Server {
 
     pub async fn serve(self, addr: &str) -> std::io::Result<()> {
         let this = Arc::new(self);
+        let api_key_checker = from_fn_with_state(this.api_keys.clone(), api_key_middleware);
+
         let app = Router::new()
             .route(
                 "/enqueue",
-                post(enqueue_file).layer(DefaultBodyLimit::max(this.max_body_size)),
+                post(enqueue_file)
+                    .layer(DefaultBodyLimit::max(this.max_body_size)),
             )
             .route("/enqueue_url", post(enqueue_url))
             .route("/get/:identifier", get(download_file))
             .with_state(this)
+            .route_layer(api_key_checker)
             .layer(TraceLayer::new_for_http())
             .fallback(handler_not_found);
 
         tracing::info!("listening on {addr}");
         let listener = TcpListener::bind(addr).await?;
         axum::serve(listener, app).await
-    }
+    } 
 }
 
 async fn enqueue_url(
