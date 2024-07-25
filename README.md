@@ -1,15 +1,29 @@
-# atranscoder-rpc
+# Audio Transcoder
 
-[![Docker Automated build](https://img.shields.io/docker/automated/neur0toxine/atranscoder-rpc.svg)](https://hub.docker.com/r/neur0toxine/atranscoder-rpc/)
-[![docker Status](https://github.com/Neur0toxine/atranscoder-rpc/workflows/docker/badge.svg)](https://github.com/Neur0toxine/atranscoder-rpc/actions?query=workflow%3Adocker)
+Сервис транскодирования аудиофайлов через HTTP API.
 
-Audio transcoder with simple HTTP API. Work in progress.
+# Использование
 
-# How to Use
+Доступны следующие параметры:
+- `format` - ожидаемый формат результата;
+- `codec` - название кодека как в FFmpeg;
+- `codec_opts` - опции кодека в формате `ключ1=значение1;ключ2=значение2`;
+- `bit_rate` - битрейт целым числом;
+- `max_bit_rate` - максимальный битрейт целым числом (для VBR);
+- `sample_rate` - частота дискретизации целым числом;
+- `channel_layout` - конфигурация каналов звука (обычно `mono` или `stereo`);
+- `callback_url` - URL, на который будет отправлен вебхук после успеха или ошибки;
+- `url` - URL файла для транскодирования;
+- `file` - поле с содержимым транскодируемого файла.
 
-Transcoding can be done like this:
-1. Use [`neur0toxine/atranscoder-rpc`](https://hub.docker.com/r/neur0toxine/atranscoder-rpc/) Docker image.
-2. Upload file for transcoding:
+Обязательные поля:
+- `format`;
+- `codec`;
+- `sample_rate`;
+- `file` (для метода `/enqueue`);
+- `url` (для метода `/enqueue_url`).
+
+Пример транскодирования с загрузкой файла напрямую в body:
 ```bash
 curl --location 'http://localhost:8090/enqueue' \
 --form 'file=@"/home/user/Music/test.mp3"' \
@@ -22,13 +36,8 @@ curl --location 'http://localhost:8090/enqueue' \
 --form 'channel_layout="stereo"' \
 --form 'callback_url="http://127.0.0.1:8909/callback"'
 ```
-3. Your `callback_url` will receive JSON response with job ID and error in case of failure. Error will be null if transcoding was successful.
-4. You can download transcoded file like this (replace `job_id` with the ID you've received):
-```bash
-curl -L http://localhost:8090/get/job_id -o file.mp4
-```
 
-You can also enqueue a remote file like this:
+С загрузкой файла по указанному URL:
 ```bash
 curl --location 'http://localhost:8090/enqueue_url' \
 --header 'Content-Type: application/json' \
@@ -45,32 +54,28 @@ curl --location 'http://localhost:8090/enqueue_url' \
 }'
 ```
 
-Mandatory fields:
-- `format`
-- `codec`
-- `sample_rate`
-- `url` (for `/enqueue_url`)
+После обработки джоба сервис отправит колбэк с результатом на указанный URL. Колбэк выглядит следующим образом:
+```json
+{
+    "id": "73bf59be-c1bf-4476-8b0d-bb25837ec9df",
+    "error": "couldn't find codec with name: hevc"
+}
+```
 
-# Configuration
+Если поле `error` пустое (`null`) - ошибки не произошло и файл успешно транскодирован.
 
-You can change configuration using these environment variables:
-- `LISTEN` - change this environment variable to change TCP listen address. Default is `0.0.0.0:8090`.
-- `NUM_WORKERS` - can be used to change how many threads will be used to transcode incoming files. Default is equal to logical CPUs.
-- `TEMP_DIR` - this can be used to change which directory should be used to store incoming downloads and transcoding results. Useful if you want to use a Docker volume for this. Default is system temp directory (`/tmp` for Linux).
-- `LOG_LEVEL` - changes log verbosity, default is `info`.
-- `MAX_BODY_SIZE` - changes max body size for `/enqueue` and max file size for `/enqueue_url`. Default is 1GB (`file` in `/enqueue` request has an upper limit of `1GiB`).
-- `RESULT_TTL_SEC` - sets result ttl in seconds, minimum 60 seconds. Default is 3600 (transcoding results are being kept and can be downloaded for an hour).
-- `FFMPEG_VERBOSE` - if set to `1` changes FFmpeg log level from quiet to trace.
+Загрузить транскодированный файл можно следующим образом:
+```bash
+curl -L http://localhost:8090/get/73bf59be-c1bf-4476-8b0d-bb25837ec9df -o file.mp4
+```
 
-# Roadmap
-- [x] Implement somewhat acceptable error handling.
-- [x] Remove old conversion results and input files that are older than 1 hour.
-- [x] Remove input file after transcoding it.
-- [x] Do not upload files directly, add download route with streaming instead.
-- [x] Conversion from OGG Opus mono to HE-AAC v1 Stereo outputs high-pitched crackling audio.
-- [x] Conversion from OGG Opus mono to AAC sometimes crashes the app with SIGSEGV (this can be seen more often with very short audio).
-- [x] ~~If FFmpeg fails, `send_error` won't be called - fix that.~~ It actually works, I just didn't notice before.
-- [x] Ability to enqueue a remote file.
-- [ ] Default errors are returned in plain text. Change it to the JSON.
-- [ ] Docker image for `amd64` and `arm64` (currently only `amd64` is supported because `arm64` cross-compilation with QEMU is sloooooooooooowwwww...).
-- [ ] Tests!
+# Конфигурация
+
+Доступны следующие переменные окружения:
+- `LISTEN` - адрес HTTP-сервера. По умолчанию используется `0.0.0.0:8090`.
+- `NUM_WORKERS` - указывает количество воркеров (потоков) для транскодирования входящих джобов. По умолчанию равно количеству логических ядер CPU.
+- `TEMP_DIR` - указывает на директорию для хранения временных файлов (загруженных и результатов транскодирования). По умолчанию равно системной директории временных файлов (`/tmp` в Linux).
+- `LOG_LEVEL` - уровень логгирования, по умолчанию `info`.
+- `MAX_BODY_SIZE` - максимальный размер тела входящего запроса для роута `/enqueue` и максимальный размер загружаемого для транскодирования файла запросом к `/enqueue_url`. По умолчанию равно 1GB (`file` в `/enqueue` имеет жестко заданный верхний лимит в `1GiB`).
+- `RESULT_TTL_SEC` - время жизни результатов транскодирования в секундах, минимум - 60 секунд. Стандартное значение - 3600 (один час). После завершения этого периода результаты будут удалены из директории с временными файлами.
+- `FFMPEG_VERBOSE` - при установке в `1` меняет уровень логгирования FFmpeg с `quiet` на `trace`.
